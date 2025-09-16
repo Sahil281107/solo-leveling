@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solo Leveling Life System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            padding: 20px;
+        }
+
+        /* Onboarding Styles */
+        .onboarding {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideIn 0.5s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .onboarding h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+
+        .question-container {
+            margin: 30px 0;
+        }
+
+        .question {
+            font-size: 1.3em;
+            color: #333;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .option-btn {
+            padding: 15px 20px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .option-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .text-input {
+            width: 100%;
+            padding: 15px;
+            font-size: 1.1em;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            transition: border-color 0.3s;
+        }
+
+        .text-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .next-btn {
+            margin-top: 20px;
+            padding: 15px 40px;
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .next-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(240, 147, 251, 0.4);
+        }
+
+        /* Dashboard Styles */
+        .dashboard {
+            display: none;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .player-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .player-title {
+            font-size: 2em;
+            color: #333;
+            font-weight: bold;
+        }
+
+        .level-badge {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+
+        .exp-bar {
+            margin-top: 20px;
+            background: #e0e0e0;
+            height: 30px;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .exp-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 1s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-name {
+            font-size: 1.1em;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stat-progress {
+            margin-top: 10px;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .stat-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.5s ease;
+        }
+
+        .quests-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .quests-header {
+            font-size: 1.8em;
+            color: #333;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+
+        .quest-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .quest-tab {
+            padding: 10px 20px;
+            background: #f0f0f0;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .quest-tab.active {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .quest-item {
+            background: #f8f8f8;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .quest-item:hover {
+            background: #f0f0f0;
+            transform: translateX(5px);
+        }
+
+        .quest-info {
+            flex: 1;
+        }
+
+        .quest-title {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .quest-reward {
+            color: #667eea;
+            font-size: 0.9em;
+        }
+
+        .quest-complete-btn {
+            padding: 8px 15px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .quest-complete-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .completed {
+            opacity: 0.5;
+            text-decoration: line-through;
+        }
+
+        .level-up-notification {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+            color: white;
+            padding: 30px 50px;
+            border-radius: 20px;
+            font-size: 2em;
+            font-weight: bold;
+            z-index: 1000;
+            animation: levelUpPop 2s ease forwards;
+        }
+
+        @keyframes levelUpPop {
+            0% {
+                transform: translate(-50%, -50%) scale(0);
+            }
+            50% {
+                transform: translate(-50%, -50%) scale(1.2);
+            }
+            100% {
+                transform: translate(-50%, -50%) scale(0);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Onboarding Section -->
+        <div class="onboarding" id="onboarding">
+            <h1>⚔️ Solo Leveling Life System</h1>
+            <p class="subtitle">Transform your life into an epic RPG adventure</p>
+            
+            <div class="question-container" id="questionContainer">
+                <!-- Questions will be dynamically inserted here -->
+            </div>
+        </div>
+
+        <!-- Dashboard Section -->
+        <div class="dashboard" id="dashboard">
+            <div class="header">
+                <div class="player-info">
+                    <div class="player-title" id="playerTitle">Loading...</div>
+                    <div class="level-badge" id="levelBadge">Level 1</div>
+                </div>
+                <div class="exp-bar">
+                    <div class="exp-fill" id="expFill">0 / 100 XP</div>
+                </div>
+            </div>
+
+            <div class="stats-grid" id="statsGrid">
+                <!-- Stats will be dynamically generated -->
+            </div>
+
+            <div class="quests-container">
+                <h2 class="quests-header">📜 Quest Log</h2>
+                <div class="quest-tabs">
+                    <button class="quest-tab active" onclick="showQuests('daily')">Daily Quests</button>
+                    <button class="quest-tab" onclick="showQuests('weekly')">Weekly Challenges</button>
+                    <button class="quest-tab" onclick="showQuests('main')">Main Story</button>
+                </div>
+                <div id="questList">
+                    <!-- Quests will be dynamically generated -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentQuestion = 0;
+        let userData = {
+            name: '',
+            goal: '',
+            commitment: '',
+            experience: ''
+        };
+        let playerData = {
+            level: 1,
+            exp: 0,
+            expToNext: 100,
+            stats: {},
+            completedQuests: []
+        };
+
+        const questions = [
+            {
+                type: 'text',
+                question: "What's your name, future legend?",
+                key: 'name'
+            },
+            {
+                type: 'options',
+                question: "What's your primary quest in life?",
+                key: 'goal',
+                options: [
+                    'Become an Elite Athlete',
+                    'Master Academic Excellence',
+                    'Build Physical Strength',
+                    'Develop Professional Skills',
+                    'Achieve Creative Mastery',
+                    'Improve Mental Health'
+                ]
+            },
+            {
+                type: 'options',
+                question: "How much time can you dedicate daily?",
+                key: 'commitment',
+                options: [
+                    '30 minutes',
+                    '1 hour',
+                    '2 hours',
+                    '3+ hours'
+                ]
+            },
+            {
+                type: 'options',
+                question: "What's your current experience level?",
+                key: 'experience',
+                options: [
+                    'Complete Beginner',
+                    'Some Experience',
+                    'Intermediate',
+                    'Advanced'
+                ]
+            }
+        ];
+
+        const systemTemplates = {
+            'Become an Elite Athlete': {
+                title: 'Elite Athlete',
+                stats: {
+                    'Technical Skill': { value: 10, max: 100 },
+                    'Physical Power': { value: 10, max: 100 },
+                    'Stamina': { value: 10, max: 100 },
+                    'Mental Focus': { value: 10, max: 100 },
+                    'Recovery': { value: 10, max: 100 },
+                    'Tactical Knowledge': { value: 10, max: 100 }
+                },
+                dailyQuests: [
+                    { title: 'Morning Warm-up Routine', reward: '20 XP', xp: 20 },
+                    { title: 'Practice Fundamental Drills (30 min)', reward: '30 XP', xp: 30 },
+                    { title: 'Watch Pro Match Analysis', reward: '15 XP', xp: 15 },
+                    { title: 'Strength Training Session', reward: '25 XP', xp: 25 },
+                    { title: 'Recovery Stretching', reward: '10 XP', xp: 10 }
+                ],
+                weeklyQuests: [
+                    { title: 'Complete 5 Full Training Sessions', reward: '100 XP', xp: 100 },
+                    { title: 'Play Practice Matches', reward: '80 XP', xp: 80 },
+                    { title: 'Film & Analyze Your Performance', reward: '60 XP', xp: 60 }
+                ],
+                mainQuests: [
+                    { title: 'Win Local Tournament', reward: '500 XP', xp: 500 },
+                    { title: 'Achieve State Ranking', reward: '1000 XP', xp: 1000 },
+                    { title: 'Get Sponsored', reward: '2000 XP', xp: 2000 }
+                ]
+            },
+            'Master Academic Excellence': {
+                title: 'Scholar Prodigy',
+                stats: {
+                    'Study Efficiency': { value: 10, max: 100 },
+                    'Memory Power': { value: 10, max: 100 },
+                    'Focus Duration': { value: 10, max: 100 },
+                    'Problem Solving': { value: 10, max: 100 },
+                    'Research Skills': { value: 10, max: 100 },
+                    'Time Management': { value: 10, max: 100 }
+                },
+                dailyQuests: [
+                    { title: 'Complete Pomodoro Study Session', reward: '25 XP', xp: 25 },
+                    { title: 'Review Class Notes', reward: '20 XP', xp: 20 },
+                    { title: 'Practice Problem Sets', reward: '30 XP', xp: 30 },
+                    { title: 'Read Academic Article', reward: '15 XP', xp: 15 },
+                    { title: 'Organize Study Materials', reward: '10 XP', xp: 10 }
+                ],
+                weeklyQuests: [
+                    { title: 'Complete All Assignments Early', reward: '100 XP', xp: 100 },
+                    { title: 'Attend Office Hours', reward: '50 XP', xp: 50 },
+                    { title: 'Create Study Guide', reward: '75 XP', xp: 75 }
+                ],
+                mainQuests: [
+                    { title: 'Achieve 4.0 GPA This Semester', reward: '1000 XP', xp: 1000 },
+                    { title: 'Win Academic Competition', reward: '1500 XP', xp: 1500 },
+                    { title: 'Publish Research Paper', reward: '2500 XP', xp: 2500 }
+                ]
+            },
+            'Build Physical Strength': {
+                title: 'Strength Warrior',
+                stats: {
+                    'Raw Strength': { value: 10, max: 100 },
+                    'Muscle Endurance': { value: 10, max: 100 },
+                    'Flexibility': { value: 10, max: 100 },
+                    'Nutrition Score': { value: 10, max: 100 },
+                    'Recovery Quality': { value: 10, max: 100 },
+                    'Consistency': { value: 10, max: 100 }
+                },
+                dailyQuests: [
+                    { title: 'Complete Workout Routine', reward: '30 XP', xp: 30 },
+                    { title: 'Hit Protein Goals', reward: '20 XP', xp: 20 },
+                    { title: 'Drink 3L of Water', reward: '10 XP', xp: 10 },
+                    { title: 'Get 8 Hours Sleep', reward: '15 XP', xp: 15 },
+                    { title: 'Mobility Stretching', reward: '15 XP', xp: 15 }
+                ],
+                weeklyQuests: [
+                    { title: 'Complete 5 Workouts', reward: '100 XP', xp: 100 },
+                    { title: 'Increase Weight on Main Lift', reward: '80 XP', xp: 80 },
+                    { title: 'Perfect Nutrition Week', reward: '70 XP', xp: 70 }
+                ],
+                mainQuests: [
+                    { title: 'Bench Press Bodyweight', reward: '500 XP', xp: 500 },
+                    { title: 'Complete First Pull-up', reward: '750 XP', xp: 750 },
+                    { title: 'Run 5K Under 25 Minutes', reward: '1000 XP', xp: 1000 }
+                ]
+            }
+        };
+
+        function initOnboarding() {
+            showQuestion();
+        }
+
+        function showQuestion() {
+            const container = document.getElementById('questionContainer');
+            const q = questions[currentQuestion];
+            
+            let html = `<div class="question">${q.question}</div>`;
+            
+            if (q.type === 'text') {
+                html += `
+                    <input type="text" class="text-input" id="answerInput" placeholder="Enter your answer...">
+                    <button class="next-btn" onclick="submitAnswer()">Continue →</button>
+                `;
+            } else if (q.type === 'options') {
+                html += '<div class="options">';
+                q.options.forEach(option => {
+                    html += `<button class="option-btn" onclick="selectOption('${option}')">${option}</button>`;
+                });
+                html += '</div>';
+            }
+            
+            container.innerHTML = html;
+        }
+
+        function submitAnswer() {
+            const input = document.getElementById('answerInput');
+            if (input && input.value.trim()) {
+                userData[questions[currentQuestion].key] = input.value.trim();
+                nextQuestion();
+            }
+        }
+
+        function selectOption(option) {
+            userData[questions[currentQuestion].key] = option;
+            nextQuestion();
+        }
+
+        function nextQuestion() {
+            currentQuestion++;
+            if (currentQuestion < questions.length) {
+                showQuestion();
+            } else {
+                initializeDashboard();
+            }
+        }
+
+        function initializeDashboard() {
+            const template = systemTemplates[userData.goal] || systemTemplates['Build Physical Strength'];
+            
+            // Set player title
+            document.getElementById('playerTitle').textContent = `${userData.name} - ${template.title}`;
+            
+            // Initialize stats
+            playerData.stats = template.stats;
+            renderStats();
+            
+            // Initialize quests
+            playerData.dailyQuests = template.dailyQuests;
+            playerData.weeklyQuests = template.weeklyQuests;
+            playerData.mainQuests = template.mainQuests;
+            showQuests('daily');
+            
+            // Update XP bar
+            updateExpBar();
+            
+            // Hide onboarding, show dashboard
+            document.getElementById('onboarding').style.display = 'none';
+            document.getElementById('dashboard').style.display = 'block';
+        }
+
+        function renderStats() {
+            const grid = document.getElementById('statsGrid');
+            let html = '';
+            
+            for (const [stat, data] of Object.entries(playerData.stats)) {
+                const percentage = (data.value / data.max) * 100;
+                html += `
+                    <div class="stat-card">
+                        <div class="stat-name">${stat}</div>
+                        <div class="stat-value">${data.value}</div>
+                        <div class="stat-progress">
+                            <div class="stat-progress-fill" style="width: ${percentage}%"></div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            grid.innerHTML = html;
+        }
+
+        function showQuests(type) {
+            // Update tab styles
+            document.querySelectorAll('.quest-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Show quests
+            const questList = document.getElementById('questList');
+            let quests = [];
+            
+            switch(type) {
+                case 'daily':
+                    quests = playerData.dailyQuests;
+                    break;
+                case 'weekly':
+                    quests = playerData.weeklyQuests;
+                    break;
+                case 'main':
+                    quests = playerData.mainQuests;
+                    break;
+            }
+            
+            let html = '';
+            quests.forEach((quest, index) => {
+                const isCompleted = playerData.completedQuests.includes(`${type}-${index}`);
+                html += `
+                    <div class="quest-item ${isCompleted ? 'completed' : ''}" id="quest-${type}-${index}">
+                        <div class="quest-info">
+                            <div class="quest-title">${quest.title}</div>
+                            <div class="quest-reward">Reward: ${quest.reward}</div>
+                        </div>
+                        ${!isCompleted ? `<button class="quest-complete-btn" onclick="completeQuest('${type}', ${index}, ${quest.xp})">Complete</button>` : ''}
+                    </div>
+                `;
+            });
+            
+            questList.innerHTML = html;
+        }
+
+        function completeQuest(type, index, xp) {
+            const questId = `${type}-${index}`;
+            if (!playerData.completedQuests.includes(questId)) {
+                playerData.completedQuests.push(questId);
+                gainExp(xp);
+                
+                // Update quest display
+                const questElement = document.getElementById(`quest-${type}-${index}`);
+                questElement.classList.add('completed');
+                questElement.querySelector('.quest-complete-btn').remove();
+                
+                // Increase random stat
+                const statKeys = Object.keys(playerData.stats);
+                const randomStat = statKeys[Math.floor(Math.random() * statKeys.length)];
+                playerData.stats[randomStat].value = Math.min(playerData.stats[randomStat].value + Math.floor(Math.random() * 3) + 1, playerData.stats[randomStat].max);
+                renderStats();
+            }
+        }
+
+        function gainExp(amount) {
+            playerData.exp += amount;
+            
+            while (playerData.exp >= playerData.expToNext) {
+                playerData.exp -= playerData.expToNext;
+                levelUp();
+            }
+            
+            updateExpBar();
+        }
+
+        function levelUp() {
+            playerData.level++;
+            playerData.expToNext = Math.floor(playerData.expToNext * 1.5);
+            
+            document.getElementById('levelBadge').textContent = `Level ${playerData.level}`;
+            
+            // Show level up notification
+            const notification = document.createElement('div');
+            notification.className = 'level-up-notification';
+            notification.textContent = `LEVEL UP! → ${playerData.level}`;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 2000);
+        }
+
+        function updateExpBar() {
+            const percentage = (playerData.exp / playerData.expToNext) * 100;
+            const expFill = document.getElementById('expFill');
+            expFill.style.width = `${percentage}%`;
+            expFill.textContent = `${playerData.exp} / ${playerData.expToNext} XP`;
+        }
+
+        // Initialize the app
+        initOnboarding();
+    </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+Problems: 
+1) The UI is to basic . 
+2) Signup problem (when the photo is uploaded only then the signup is successful)
+3) After signup I want the provision to update the profile photo or upload the profile photo (if not added while creating the character) and I want the provision to remove profile photo.
+4)After signup or login the daily quests , weekly challenges and achievements are not visible and the timer for reseting the daily quest and weekly challenges is having some garbage value in it (saying "Reset in NaNm remaining")
+5)

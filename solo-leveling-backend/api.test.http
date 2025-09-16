@@ -1,0 +1,43 @@
+### Health Check
+GET http://localhost:5000/api/health
+
+### Signup Adventurer
+POST http://localhost:5000/api/auth/signup
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "username": "testuser",
+  "password": "password123",
+  "user_type": "adventurer",
+  "full_name": "Test User",
+  "field_of_interest": "Programming Skills",
+  "commitment_level": "1_hour",
+  "experience_level": "beginner"
+}
+
+### Login
+POST http://localhost:5000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "password123"
+}
+
+### Get Daily Quests (need token from login)
+GET http://localhost:5000/api/quests/daily
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### Signup Coach
+POST http://localhost:5000/api/auth/signup
+Content-Type: application/json
+
+{
+  "email": "coach@example.com",
+  "username": "coach1",
+  "password": "password123",
+  "user_type": "coach",
+  "full_name": "Coach Name",
+  "field_of_interest": "Programming Skills"
+}
