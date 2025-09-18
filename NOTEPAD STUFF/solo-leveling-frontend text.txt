@@ -1380,7 +1380,7 @@ import Cookies from 'js-cookie';
 import { 
   Sword, Shield, Heart, Brain, Zap, Star,
   Trophy, Target, TrendingUp, Calendar, Clock, CheckCircle,
-  Flame, Swords, Activity, Lock, Unlock, AlertCircle, RefreshCw,
+  Flame, Swords, Crown, Activity, Lock, Unlock, AlertCircle, RefreshCw,
   MessageSquare, Mail, Eye, EyeOff, User
 } from 'lucide-react';
 
@@ -1737,68 +1737,118 @@ export default function DashboardPage() {
     ];
   };
 
-  const handleQuestComplete = async (questId: number, questType: 'daily' | 'weekly' = 'daily') => {
-    try {
-      console.log(`Dashboard: Completing quest ${questId}...`);
-      
-      // Update locally first for immediate feedback
-      if (questType === 'daily') {
-        setDailyQuests(prev => prev.map(q => 
-          q.active_quest_id === questId ? {...q, is_completed: true} : q
-        ));
-      } else {
-        setWeeklyQuests(prev => prev.map(q => 
-          q.active_quest_id === questId ? {...q, is_completed: true} : q
-        ));
-      }
-
-      // Try to complete via API
-      try {
-        const response = await api.post(`/quests/complete/${questId}`);
-        const xpGained = response.data.xp_gained || (questType === 'weekly' ? 500 : 100);
-        toast.success(`🎉 Quest completed! +${xpGained} XP gained!`);
-        
-        if (response.data.leveledUp) {
-          toast.success(`🎊 LEVEL UP! You reached Level ${response.data.newLevel}!`);
-          checkAchievements(response.data.newLevel, response.data.totalExp);
-        }
-        
-        // Refresh data
-        setTimeout(() => {
-          fetchDashboardData();
-        }, 1000);
-      } catch (apiError) {
-        console.warn('Dashboard: API quest completion failed, using frontend simulation');
-        // Simulate XP gain locally
-        const xpGained = questType === 'weekly' ? 200 : 30;
-        toast.success(`🎉 Quest completed! +${xpGained} XP gained! (Demo mode)`);
-        
-        // Update profile locally
-        if (profile) {
-          const newTotalExp = profile.total_exp + xpGained;
-          let newCurrentExp = profile.current_exp + xpGained;
-          let newLevel = profile.current_level;
-          
-          if (newCurrentExp >= profile.exp_to_next_level) {
-            newLevel++;
-            newCurrentExp = newCurrentExp - profile.exp_to_next_level;
-            toast.success(`🎊 LEVEL UP! You reached Level ${newLevel}!`);
-          }
-          
-          setProfile(prev => ({
-            ...prev,
-            total_exp: newTotalExp,
-            current_exp: newCurrentExp,
-            current_level: newLevel
-          }));
-        }
-      }
-      
-    } catch (error: any) {
-      console.error('Dashboard: Quest completion error:', error);
-      toast.error('Failed to complete quest. Please try again.');
+ const handleQuestComplete = async (questId: number, questType: 'daily' | 'weekly' = 'daily') => {
+  try {
+    console.log(`Dashboard: Completing quest ${questId}...`);
+    
+    // Update locally first for immediate feedback
+    if (questType === 'daily') {
+      setDailyQuests(prev => prev.map(q => 
+        q.active_quest_id === questId ? {...q, is_completed: true} : q
+      ));
+    } else {
+      setWeeklyQuests(prev => prev.map(q => 
+        q.active_quest_id === questId ? {...q, is_completed: true} : q
+      ));
     }
-  };
+
+    // Try to complete via API
+    try {
+      const response = await api.post(`/quests/complete/${questId}`);
+      const xpGained = response.data.xp_gained || (questType === 'weekly' ? 500 : 100);
+      
+      // Show XP gained toast
+      toast.success(`🎉 Quest completed! +${xpGained} XP gained!`);
+      
+      // Show level up toast if applicable
+      if (response.data.leveledUp) {
+        toast.success(`🎊 LEVEL UP! You reached Level ${response.data.newLevel}!`);
+      }
+      
+      // *** NEW: Show streak notifications ***
+      if (response.data.streakInfo) {
+        const { currentStreak, streakBroken, isNewRecord } = response.data.streakInfo;
+        
+        if (streakBroken) {
+          toast.error(`💔 Streak reset! Starting fresh at Day 1`, {
+            duration: 4000
+          });
+        } else if (isNewRecord) {
+          toast.success(`🔥 New personal record! ${currentStreak} day streak!`, {
+            duration: 5000,
+            style: {
+              background: '#F59E0B',
+              color: '#fff',
+              fontWeight: 'bold'
+            }
+          });
+        } else if (currentStreak > 1) {
+          toast.success(`🔥 ${currentStreak} day streak! Keep it up!`, {
+            duration: 3000
+          });
+        }
+        
+        // Update profile locally to reflect new streak
+        setProfile(prev => prev ? {
+          ...prev,
+          streak_days: currentStreak,
+          longest_streak: isNewRecord ? currentStreak : prev.longest_streak
+        } : prev);
+      }
+      
+      // Show achievement notifications
+      if (response.data.newAchievements && response.data.newAchievements.length > 0) {
+        response.data.newAchievements.forEach((achievement: any) => {
+          toast.success(`🏆 Achievement Unlocked: ${achievement.achievement_name}!`, {
+            duration: 6000,
+            style: {
+              background: '#4F46E5',
+              color: '#fff',
+              fontWeight: 'bold'
+            }
+          });
+        });
+      }
+      
+      // Refresh data to show updates
+      setTimeout(() => {
+        fetchDashboardData();
+      }, 1000);
+      
+    } catch (apiError) {
+      console.warn('Dashboard: API quest completion failed, using frontend simulation');
+      // Simulate XP gain locally
+      const xpGained = questType === 'weekly' ? 200 : 30;
+      toast.success(`🎉 Quest completed! +${xpGained} XP gained! (Demo mode)`);
+      
+      // Update profile locally
+      if (profile) {
+        const newTotalExp = profile.total_exp + xpGained;
+        let newCurrentExp = profile.current_exp + xpGained;
+        let newLevel = profile.current_level;
+        
+        if (newCurrentExp >= profile.exp_to_next_level) {
+          newLevel++;
+          newCurrentExp = newCurrentExp - profile.exp_to_next_level;
+          toast.success(`🎊 LEVEL UP! You reached Level ${newLevel}!`);
+        }
+        
+        setProfile(prev => ({
+          ...prev,
+          total_exp: newTotalExp,
+          current_exp: newCurrentExp,
+          current_level: newLevel
+        }));
+        
+        checkAchievements(newLevel, newTotalExp);
+      }
+    }
+    
+  } catch (error: any) {
+    console.error('Dashboard: Quest completion error:', error);
+    toast.error('Failed to complete quest. Please try again.');
+  }
+};
 
   const checkAchievements = async (level: number, totalExp: number) => {
     try {
@@ -2642,6 +2692,417 @@ export default function DashboardPage() {
     </div>
   );
 }
+const StreakDisplay = ({ streakDays, longestStreak }: { streakDays: number, longestStreak: number }) => {
+  const getStreakColor = (days: number) => {
+    if (days >= 30) return 'text-purple-600';
+    if (days >= 14) return 'text-blue-600';
+    if (days >= 7) return 'text-orange-600';
+    if (days >= 3) return 'text-yellow-600';
+    return 'text-gray-600';
+  };
+
+  const getStreakEmoji = (days: number) => {
+    if (days >= 30) return '💎';
+    if (days >= 14) return '🔥';
+    if (days >= 7) return '⚡';
+    if (days >= 3) return '🌟';
+    return '✨';
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-orange-500">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-700">Current Streak</h3>
+          <div className={`text-3xl font-bold ${getStreakColor(streakDays)}`}>
+            {getStreakEmoji(streakDays)} {streakDays} {streakDays === 1 ? 'day' : 'days'}
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-sm text-gray-500">Personal Best</p>
+          <p className="text-xl font-semibold text-gray-700">
+            🏆 {longestStreak} {longestStreak === 1 ? 'day' : 'days'}
+          </p>
+        </div>
+      </div>
+      
+      {/* Streak progress bar */}
+      <div className="mt-4">
+        <div className="flex justify-between text-xs text-gray-500 mb-1">
+          <span>Next milestone</span>
+          <span>
+            {streakDays >= 30 ? 'Streak Master!' : 
+             streakDays >= 14 ? `${30 - streakDays} days to Diamond` :
+             streakDays >= 7 ? `${14 - streakDays} days to Fire` :
+             `${7 - streakDays} days to Lightning`}
+          </span>
+        </div>
+        <div className="w-full bg-gray-200 rounded-full h-2">
+          <div 
+            className={`h-2 rounded-full transition-all duration-300 ${
+              streakDays >= 30 ? 'bg-purple-500' :
+              streakDays >= 14 ? 'bg-blue-500' :
+              streakDays >= 7 ? 'bg-orange-500' :
+              'bg-yellow-500'
+            }`}
+            style={{ 
+              width: `${Math.min(100, (streakDays % 7 || streakDays) / 7 * 100)}%`
+            }}
+          />
+        </div>
+      </div>
+      
+      {/* Streak tips */}
+      {streakDays === 0 && (
+        <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+          💡 Complete your first quest today to start your streak!
+        </div>
+      )}
+      {streakDays >= 1 && streakDays < 3 && (
+        <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+          🚀 Great start! Complete quests daily to build your streak!
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Replace your coach guidance section in the adventurer dashboard with this improved version
+
+const CoachGuidanceSection = ({ receivedGuidance, markGuidanceAsRead }: any) => {
+  
+  // Same image URL logic as your Navbar component
+  const getCoachImageUrl = (guidance: any) => {
+    const photoUrl = guidance.coach_photo;
+    
+    console.log('Coach Guidance: Raw photo URL from backend:', photoUrl);
+    
+    if (!photoUrl) {
+      console.log('Coach Guidance: No photo URL found');
+      return null;
+    }
+
+    // If it's a base64 data URL (for demo mode)
+    if (photoUrl.startsWith('data:')) {
+      console.log('Coach Guidance: Base64 data URL detected');
+      return photoUrl;
+    }
+
+    // If backend gave full URL, use it directly
+    if (photoUrl.startsWith("http")) {
+      console.log('Coach Guidance: Full URL detected');
+      return photoUrl;
+    }
+
+    // If backend gave relative path like "/uploads/profiles/...", add backend URL
+    const fullUrl = `http://localhost:5000${photoUrl}`;
+    console.log('Coach Guidance: Constructed full URL:', fullUrl);
+    return fullUrl;
+  };
+
+  return (
+    <div style={{ 
+      background: 'rgba(0, 0, 0, 0.7)', 
+      backdropFilter: 'blur(10px)', 
+      borderRadius: '20px', 
+      border: '1px solid rgba(147, 51, 234, 0.3)', 
+      padding: '32px',
+      height: '500px',
+      display: 'flex',
+      flexDirection: 'column'
+    }}>
+      {/* Header */}
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between', 
+        marginBottom: '24px',
+        paddingBottom: '16px',
+        borderBottom: '1px solid rgba(147, 51, 234, 0.2)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <MessageSquare size={24} style={{ color: '#a855f7' }} />
+          <h3 style={{ 
+            fontSize: '20px', 
+            fontWeight: 'bold', 
+            color: '#e9d5ff', 
+            margin: 0 
+          }}>
+            Coach Guidance
+          </h3>
+        </div>
+        {receivedGuidance.length > 0 && (
+          <span style={{
+            background: 'rgba(147, 51, 234, 0.2)',
+            color: '#e9d5ff',
+            padding: '4px 12px',
+            borderRadius: '12px',
+            fontSize: '12px',
+            fontWeight: '600'
+          }}>
+            {receivedGuidance.length} message{receivedGuidance.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+
+      {/* Messages */}
+      <div style={{ 
+        flex: 1, 
+        overflowY: 'auto', 
+        paddingRight: '8px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '16px'
+      }}>
+        {receivedGuidance.length > 0 ? (
+          receivedGuidance.map((guidance: any, index: number) => {
+            const coachImageUrl = getCoachImageUrl(guidance);
+            
+            return (
+              <div
+                key={guidance.feedback_id || index}
+                style={{
+                  background: guidance.is_read 
+                    ? 'rgba(75, 85, 99, 0.3)' 
+                    : 'rgba(147, 51, 234, 0.15)',
+                  border: guidance.is_read 
+                    ? '1px solid rgba(75, 85, 99, 0.4)' 
+                    : '1px solid rgba(147, 51, 234, 0.4)',
+                  borderRadius: '16px',
+                  padding: '20px',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease'
+                }}
+                onClick={() => !guidance.is_read && markGuidanceAsRead(guidance.feedback_id)}
+              >
+                {/* Coach Info Header */}
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '12px', 
+                  marginBottom: '12px' 
+                }}>
+                  {/* Coach Profile Photo - FIXED VERSION */}
+                  <div style={{
+                    width: '40px',
+                    height: '40px',
+                    borderRadius: '50%',
+                    border: '2px solid rgba(147, 51, 234, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    overflow: 'hidden',
+                    position: 'relative',
+                    background: coachImageUrl ? 'transparent' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                  }}>
+                    {coachImageUrl ? (
+                      <img 
+                        src={coachImageUrl}
+                        alt={`${guidance.coach_name || 'Coach'}'s profile`}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          borderRadius: '50%'
+                        }}
+                        onLoad={() => {
+                          console.log('✅ Coach image loaded successfully:', coachImageUrl);
+                        }}
+                        onError={(e) => {
+                          console.error('❌ Failed to load coach image:', coachImageUrl);
+                          
+                          // Replace with fallback on error
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          const parent = target.parentElement;
+                          if (parent) {
+                            parent.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                            parent.innerHTML = `<span style="color: white; font-weight: bold; font-size: 14px;">${(guidance.coach_name || guidance.coach_username || 'C').charAt(0).toUpperCase()}</span>`;
+                          }
+                        }}
+                      />
+                    ) : (
+                      <span style={{
+                        color: '#fff',
+                        fontWeight: 'bold',
+                        fontSize: '14px'
+                      }}>
+                        {(guidance.coach_name || guidance.coach_username || 'C').charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Coach Name and Info */}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '8px',
+                      marginBottom: '4px'
+                    }}>
+                      <span style={{
+                        color: guidance.is_read ? '#9ca3af' : '#e9d5ff',
+                        fontWeight: '600',
+                        fontSize: '16px'
+                      }}>
+                        {guidance.coach_name || guidance.coach_username || 'Your Coach'}
+                      </span>
+                      <Crown size={14} style={{ color: '#fbbf24' }} />
+                      <span style={{
+                        color: guidance.is_read ? '#6b7280' : '#a855f7',
+                        fontSize: '12px',
+                        fontWeight: '500'
+                      }}>
+                        Coach
+                      </span>
+                    </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '8px',
+                      fontSize: '12px',
+                      color: '#9ca3af'
+                    }}>
+                      <span>{guidance.formatted_date || new Date(guidance.created_at).toLocaleDateString()}</span>
+                      {!guidance.is_read && (
+                        <span style={{
+                          background: '#3b82f6',
+                          color: 'white',
+                          padding: '2px 6px',
+                          borderRadius: '8px',
+                          fontSize: '10px',
+                          fontWeight: '600'
+                        }}>
+                          NEW
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Message Content */}
+                <div style={{
+                  color: guidance.is_read ? '#d1d5db' : '#f3f4f6',
+                  fontSize: '14px',
+                  lineHeight: '1.6',
+                  marginBottom: '12px',
+                  padding: '12px',
+                  background: 'rgba(0, 0, 0, 0.2)',
+                  borderRadius: '8px',
+                  borderLeft: '3px solid rgba(147, 51, 234, 0.6)'
+                }}>
+                  {guidance.feedback_text}
+                </div>
+
+                {/* Message Footer */}
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  fontSize: '12px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{
+                      background: guidance.is_read 
+                        ? 'rgba(107, 114, 128, 0.3)' 
+                        : 'rgba(147, 51, 234, 0.4)',
+                      padding: '4px 8px',
+                      borderRadius: '20px',
+                      textTransform: 'capitalize',
+                      color: guidance.is_read ? '#9ca3af' : '#e9d5ff',
+                      fontWeight: '600'
+                    }}>
+                      {guidance.feedback_type || 'guidance'}
+                    </span>
+                    
+                    {guidance.rating && (
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '4px',
+                        color: '#fbbf24'
+                      }}>
+                        {Array(guidance.rating).fill(0).map((_, i) => (
+                          <Star key={i} size={12} fill="currentColor" />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {!guidance.is_read && (
+                    <div style={{
+                      color: '#a855f7',
+                      fontSize: '11px',
+                      fontWeight: '500',
+                      opacity: 0.8
+                    }}>
+                      Click to mark as read
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          // Empty State
+          <div style={{ 
+            textAlign: 'center', 
+            padding: '60px 20px',
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <div style={{
+              width: '80px',
+              height: '80px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '24px',
+              opacity: 0.5
+            }}>
+              <MessageSquare size={40} style={{ color: '#fff' }} />
+            </div>
+            <h3 style={{ 
+              fontSize: '24px', 
+              fontWeight: 'bold', 
+              marginBottom: '12px', 
+              color: '#9ca3af' 
+            }}>
+              No Guidance Yet
+            </h3>
+            <p style={{ 
+              fontSize: '16px',
+              color: '#6b7280',
+              maxWidth: '300px',
+              lineHeight: '1.5'
+            }}>
+              Your coach hasn't sent any guidance messages yet. Keep up the great work on your quests!
+            </p>
+            
+            <div style={{
+              marginTop: '20px',
+              padding: '12px 20px',
+              background: 'rgba(147, 51, 234, 0.1)',
+              border: '1px solid rgba(147, 51, 234, 0.3)',
+              borderRadius: '12px',
+              color: '#a855f7',
+              fontSize: '14px',
+              fontWeight: '500'
+            }}>
+              💡 Complete quests to get your coach's attention!
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 
 
 
@@ -5914,7 +6375,6 @@ useEffect(() => {
     </>
   );
 }
-
 
 
 

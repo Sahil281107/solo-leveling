@@ -8,7 +8,10 @@ import {
   uploadProfilePhoto,
   removeProfilePhoto,
   getReceivedFeedback,        // Add this
-  markFeedbackAsRead          // Add this
+  markFeedbackAsRead ,         // Add this
+  recalculateUserStreak,    // Add this import
+  getUserStreakDetails,      // Add this import
+  getCoachDetails
 } from '../controllers/userController';
 import { authenticate } from '../middleware/auth';
 import { upload } from '../middleware/upload';
@@ -29,5 +32,10 @@ router.delete('/remove-photo', removeProfilePhoto);
 // New routes for feedback
 router.get('/received-feedback', getReceivedFeedback);           // Add this
 router.put('/feedback/:feedback_id/read', markFeedbackAsRead);   // Add this
+
+router.post('/recalculate-streak', recalculateUserStreak);
+router.get('/streak-details', getUserStreakDetails);
+
+router.get('/coach/:coach_id/details', getCoachDetails);
 
 export default router;

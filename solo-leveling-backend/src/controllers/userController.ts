@@ -475,32 +475,111 @@ export const getReceivedFeedback = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.user_id;
     
-    // Get all feedback received by this student from their coaches with proper coach info
+    console.log('=== GET RECEIVED FEEDBACK DEBUG ===');
+    console.log('Student User ID:', userId);
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID not found' });
+    }
+    
+    // Enhanced query with detailed coach info
     const [feedback]: any = await pool.execute(`
       SELECT 
-        cf.*,
-        COALESCE(cp.full_name, u.username) as coach_name,
+        cf.feedback_id,
+        cf.coach_user_id,
+        cf.student_user_id,
+        cf.feedback_type,
+        cf.feedback_text,
+        cf.rating,
+        cf.is_read,
+        cf.created_at,
+        -- Coach basic info
         u.username as coach_username,
         u.profile_photo_url as coach_photo,
-        DATE_FORMAT(cf.created_at, '%d/%m/%Y at %H:%i:%s') as formatted_date
+        u.email as coach_email,
+        -- Coach profile info
+        cp.full_name as coach_full_name,
+        cp.bio as coach_bio,
+        cp.specialization as coach_specialization,
+        -- Formatted dates
+        DATE_FORMAT(cf.created_at, '%M %e, %Y at %h:%i %p') as formatted_date,
+        -- Time ago calculation
+        CASE 
+          WHEN TIMESTAMPDIFF(MINUTE, cf.created_at, NOW()) < 60 THEN 
+            CONCAT(TIMESTAMPDIFF(MINUTE, cf.created_at, NOW()), ' minutes ago')
+          WHEN TIMESTAMPDIFF(HOUR, cf.created_at, NOW()) < 24 THEN 
+            CONCAT(TIMESTAMPDIFF(HOUR, cf.created_at, NOW()), ' hours ago')
+          WHEN TIMESTAMPDIFF(DAY, cf.created_at, NOW()) < 30 THEN 
+            CONCAT(TIMESTAMPDIFF(DAY, cf.created_at, NOW()), ' days ago')
+          ELSE 
+            DATE_FORMAT(cf.created_at, '%M %e, %Y')
+        END as time_ago
+        
       FROM coach_feedback cf
-      LEFT JOIN coach_profiles cp ON cf.coach_user_id = cp.user_id
       LEFT JOIN users u ON cf.coach_user_id = u.user_id
+      LEFT JOIN coach_profiles cp ON cf.coach_user_id = cp.user_id
       WHERE cf.student_user_id = ?
       ORDER BY cf.created_at DESC
       LIMIT 50
     `, [userId]);
     
-    console.log('Fetched feedback for student:', userId, 'Count:', feedback.length);
+    console.log(`Found ${feedback.length} feedback messages`);
+    
+    // Debug each feedback message's coach info
+    feedback.forEach((f: any, index: number) => {
+      console.log(`\n--- Feedback ${index + 1} Debug ---`);
+      console.log('Coach User ID:', f.coach_user_id);
+      console.log('Coach Username:', f.coach_username);
+      console.log('Coach Full Name:', f.coach_full_name);
+      console.log('Coach Photo URL (RAW):', f.coach_photo);
+      console.log('Coach Email:', f.coach_email);
+      console.log('Message Preview:', f.feedback_text.substring(0, 30) + '...');
+    });
+    
+    // Process feedback with enhanced coach info
+    const processedFeedback = feedback.map((f: any) => ({
+      ...f,
+      coach_name: f.coach_full_name || f.coach_username || 'Your Coach',
+      coach_title: f.coach_specialization || 'Life Coach',
+      coach_experience: '1+ years experience',
+      formatted_date: f.formatted_date || new Date(f.created_at).toLocaleDateString(),
+      time_ago: f.time_ago || 'Recently'
+    }));
+    
+    console.log('\n=== PROCESSED FEEDBACK SAMPLE ===');
+    if (processedFeedback.length > 0) {
+      const sample = processedFeedback[0];
+      console.log('Sample processed feedback:');
+      console.log('- Coach Name:', sample.coach_name);
+      console.log('- Coach Photo URL:', sample.coach_photo);
+      console.log('- Coach Title:', sample.coach_title);
+      console.log('- Formatted Date:', sample.formatted_date);
+    }
+    console.log('=================================');
     
     res.json({ 
-      feedback: feedback || [],
-      unread_count: feedback ? feedback.filter((f: any) => !f.is_read).length : 0
+      feedback: processedFeedback,
+      unread_count: processedFeedback.filter((f: any) => !f.is_read).length,
+      total_count: processedFeedback.length,
+      debug_info: {
+        student_id: userId,
+        raw_feedback_count: feedback.length,
+        processed_feedback_count: processedFeedback.length,
+        sample_coach_photo: processedFeedback.length > 0 ? processedFeedback[0].coach_photo : null
+      }
     });
     
   } catch (error: any) {
-    console.error('Get received feedback error:', error);
-    res.status(500).json({ error: 'Failed to fetch received feedback' });
+    console.error('=== GET RECEIVED FEEDBACK ERROR ===');
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
+    console.error('SQL State:', error.sqlState);
+    console.error('====================================');
+    
+    res.status(500).json({ 
+      error: 'Failed to fetch received feedback',
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
   }
 };
 
@@ -520,5 +599,142 @@ export const markFeedbackAsRead = async (req: AuthRequest, res: Response) => {
   } catch (error: any) {
     console.error('Mark feedback as read error:', error);
     res.status(500).json({ error: 'Failed to mark feedback as read' });
+  }
+};
+
+export const recalculateUserStreak = async (req: AuthRequest, res: Response) => {
+  const connection = await pool.getConnection();
+  
+  try {
+    const userId = req.user?.user_id;
+    
+    // Call the stored procedure to recalculate streak
+    await connection.execute('CALL RecalculateUserStreak(?)', [userId]);
+    
+    // Get updated profile data
+    const [profile]: any = await connection.execute(
+      'SELECT streak_days, longest_streak, last_activity_date FROM adventurer_profiles WHERE user_id = ?',
+      [userId]
+    );
+    
+    res.json({
+      message: 'Streak recalculated successfully',
+      streakInfo: profile[0] || null
+    });
+    
+  } catch (error: any) {
+    console.error('Recalculate streak error:', error);
+    res.status(500).json({ error: 'Failed to recalculate streak' });
+  } finally {
+    connection.release();
+  }
+};
+
+export const getUserStreakDetails = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.user_id;
+    
+    // Get streak information
+    const [profile]: any = await pool.execute(
+      `SELECT 
+         streak_days, 
+         longest_streak, 
+         last_activity_date,
+         DATEDIFF(CURDATE(), last_activity_date) as days_since_last_activity
+       FROM adventurer_profiles 
+       WHERE user_id = ?`,
+      [userId]
+    );
+    
+    // Get daily checkins for the last 30 days
+    const [checkins]: any = await pool.execute(
+      `SELECT 
+         checkin_date, 
+         quests_completed, 
+         total_xp_earned 
+       FROM daily_checkins 
+       WHERE user_id = ? AND checkin_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+       ORDER BY checkin_date DESC`,
+      [userId]
+    );
+    
+    // Calculate streak status
+    let streakStatus = 'unknown';
+    if (profile[0]) {
+      const daysSinceLastActivity = profile[0].days_since_last_activity;
+      if (daysSinceLastActivity === 0) streakStatus = 'active';
+      else if (daysSinceLastActivity === 1) streakStatus = 'at_risk';
+      else if (daysSinceLastActivity > 1) streakStatus = 'broken';
+    }
+    
+    res.json({
+      streakInfo: profile[0] || null,
+      streakStatus,
+      recentCheckins: checkins,
+      totalActiveDays: checkins.length
+    });
+    
+  } catch (error: any) {
+    console.error('Get streak details error:', error);
+    res.status(500).json({ error: 'Failed to fetch streak details' });
+  }
+};
+export const getCoachDetails = async (req: AuthRequest, res: Response) => {
+  try {
+    const { coach_id } = req.params;
+    const studentId = req.user?.user_id;
+    
+    // Verify the relationship exists
+    const [relationship]: any = await pool.execute(
+      'SELECT * FROM coach_student_relationships WHERE coach_user_id = ? AND student_user_id = ? AND status = "active"',
+      [coach_id, studentId]
+    );
+    
+    if (relationship.length === 0) {
+      return res.status(403).json({ error: 'No active coaching relationship found' });
+    }
+    
+    // Get comprehensive coach details
+    const [coach]: any = await pool.execute(`
+      SELECT 
+        u.user_id,
+        u.username,
+        u.profile_photo_url,
+        u.created_at as joined_date,
+        COALESCE(cp.full_name, u.username) as full_name,
+        cp.bio,
+        cp.specialization,
+        cp.years_experience,
+        cp.total_students_coached,
+        cp.success_stories,
+        cp.certification,
+        cp.created_at as coach_since,
+        
+        -- Current student stats
+        cp.current_students,
+        cp.max_students,
+        
+        -- Calculate coach ratings if you have a rating system
+        COUNT(DISTINCT csr.student_user_id) as active_students,
+        AVG(cf.rating) as average_rating,
+        COUNT(DISTINCT cf.feedback_id) as total_feedback_given
+        
+      FROM users u
+      LEFT JOIN coach_profiles cp ON u.user_id = cp.user_id
+      LEFT JOIN coach_student_relationships csr ON u.user_id = csr.coach_user_id AND csr.status = 'active'
+      LEFT JOIN coach_feedback cf ON u.user_id = cf.coach_user_id AND cf.rating IS NOT NULL
+      WHERE u.user_id = ? AND u.user_type = 'coach'
+      GROUP BY u.user_id
+    `, [coach_id]);
+    
+    if (coach.length === 0) {
+      return res.status(404).json({ error: 'Coach not found' });
+    }
+    
+    res.json({ coach: coach[0] });
+    
+  } catch (error: any) {
+    console.error('Get coach details error:', error);
+    res.status(500).json({ error: 'Failed to fetch coach details' });
   }
 };

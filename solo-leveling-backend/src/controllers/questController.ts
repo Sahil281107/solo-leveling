@@ -344,6 +344,9 @@ export const completeQuest = async (req: AuthRequest, res: Response) => {
       [userId, quest.quest_template_id, quest.quest_type, xpGained]
     );
     
+    // *** NEW: UPDATE STREAK BEFORE UPDATING PROFILE ***
+    const streakUpdate = await updateUserStreak(connection, userId, quest.quest_type, xpGained);
+    
     // Update user profile with XP
     const [currentProfile]: any = await connection.execute(
       'SELECT * FROM adventurer_profiles WHERE user_id = ?',
@@ -362,14 +365,14 @@ export const completeQuest = async (req: AuthRequest, res: Response) => {
       while (newCurrentExp >= expToNext) {
         newCurrentExp -= expToNext;
         newLevel++;
-        expToNext = Math.floor(100 * Math.pow(1.5, newLevel - 1)); // Exponential growth
+        expToNext = Math.floor(100 * Math.pow(1.5, newLevel - 1));
         leveledUp = true;
       }
       
-      // Update profile
+      // Update profile (streak already updated in updateUserStreak)
       await connection.execute(
         `UPDATE adventurer_profiles 
-         SET total_exp = ?, current_exp = ?, current_level = ?, exp_to_next_level = ?, last_activity_date = CURDATE()
+         SET total_exp = ?, current_exp = ?, current_level = ?, exp_to_next_level = ?
          WHERE user_id = ?`,
         [newTotalExp, newCurrentExp, newLevel, expToNext, userId]
       );
@@ -391,6 +394,9 @@ export const completeQuest = async (req: AuthRequest, res: Response) => {
           [userId, quest.related_stat]
         );
       }
+
+      // Check achievements after quest completion
+      const newAchievements = await checkAchievementsInternal(connection, userId, newLevel, newTotalExp);
       
       await connection.commit();
       
@@ -398,12 +404,19 @@ export const completeQuest = async (req: AuthRequest, res: Response) => {
         message: 'Quest completed successfully',
         xp_gained: xpGained,
         leveledUp,
-        newLevel: leveledUp ? newLevel : undefined,
-        totalExp: newTotalExp
+        newLevel: leveledUp ? newLevel : profile.current_level,
+        totalExp: newTotalExp,
+        newAchievements: newAchievements || [],
+        streakInfo: streakUpdate ? {
+          currentStreak: streakUpdate.newStreakDays,
+          streakBroken: streakUpdate.streakBroken,
+          isNewRecord: streakUpdate.isNewRecord
+        } : null
       });
+      
     } else {
       await connection.rollback();
-      res.status(404).json({ error: 'User profile not found' });
+      res.status(404).json({ error: 'Profile not found' });
     }
     
   } catch (error: any) {
@@ -412,6 +425,95 @@ export const completeQuest = async (req: AuthRequest, res: Response) => {
     res.status(500).json({ error: 'Failed to complete quest' });
   } finally {
     connection.release();
+  }
+};
+
+// *** NEW: INTERNAL ACHIEVEMENT CHECKING FUNCTION ***
+const checkAchievementsInternal = async (connection: any, userId: number, currentLevel: number, currentTotalExp: number) => {
+  try {
+    const newAchievements = [];
+    
+    // Get current profile for streak info
+    const [profile]: any = await connection.execute(
+      'SELECT * FROM adventurer_profiles WHERE user_id = ?',
+      [userId]
+    );
+    
+    if (profile.length === 0) {
+      return newAchievements;
+    }
+    
+    const currentProfile = profile[0];
+    
+    // Count completed quests
+    const [questCount]: any = await connection.execute(
+      'SELECT COUNT(*) as count FROM quest_completion_history WHERE user_id = ?',
+      [userId]
+    );
+    
+    const completedQuests = questCount[0].count;
+    
+    // Check various achievement conditions
+    const achievementChecks = [
+      { id: 1, name: 'First Steps', condition: completedQuests >= 1 },
+      { id: 2, name: 'Week Warrior', condition: currentProfile.streak_days >= 7 },
+      { id: 3, name: 'Level 5 Hunter', condition: currentLevel >= 5 },
+      { id: 4, name: 'Level 10 Fighter', condition: currentLevel >= 10 },
+      { id: 5, name: 'Quest Master', condition: completedQuests >= 50 },
+      { id: 6, name: 'Dedication', condition: currentProfile.streak_days >= 30 },
+      { id: 7, name: 'Power Surge', condition: currentTotalExp >= 1000 },
+      { id: 8, name: 'Elite Hunter', condition: currentLevel >= 20 },
+      { id: 10, name: 'Shadow Monarch', condition: currentLevel >= 50 }
+    ];
+    
+    // Check stat-based achievements
+    const [stats]: any = await connection.execute(
+      'SELECT * FROM user_stats WHERE user_id = ? AND current_value >= 100',
+      [userId]
+    );
+    
+    if (stats.length > 0) {
+      achievementChecks.push({ id: 9, name: 'Strength Master', condition: true });
+    }
+    
+    // Check and award achievements
+    for (const check of achievementChecks) {
+      if (check.condition) {
+        // Check if already earned
+        const [existing]: any = await connection.execute(
+          'SELECT * FROM user_achievements WHERE user_id = ? AND achievement_id = ?',
+          [userId, check.id]
+        );
+        
+        if (existing.length === 0) {
+          // Award achievement
+          await connection.execute(
+            'INSERT INTO user_achievements (user_id, achievement_id, earned_at) VALUES (?, ?, NOW())',
+            [userId, check.id]
+          );
+          
+          // Add to new achievements list
+          newAchievements.push({
+            achievement_id: check.id,
+            achievement_name: check.name
+          });
+          
+          // Create notification
+          await connection.execute(
+            `INSERT INTO notifications 
+             (user_id, notification_type, title, message, expires_at) 
+             VALUES (?, 'achievement', ?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY))`,
+            [userId, `Achievement Unlocked: ${check.name}!`, `Congratulations! You have earned the ${check.name} achievement!`]
+          );
+        }
+      }
+    }
+    
+    return newAchievements;
+    
+  } catch (error) {
+    console.error('Internal achievement check error:', error);
+    return [];
   }
 };
 
@@ -533,5 +635,127 @@ export const initializeQuestSystem = async (req: AuthRequest, res: Response) => 
     res.status(500).json({ error: 'Failed to initialize quest system' });
   } finally {
     connection.release();
+  }
+};
+const updateUserStreak = async (connection: any, userId: number, questType: string, xpEarned: number) => {
+  try {
+    const today = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
+    
+    // Get current profile info
+    const [currentProfile]: any = await connection.execute(
+      'SELECT * FROM adventurer_profiles WHERE user_id = ?',
+      [userId]
+    );
+    
+    if (currentProfile.length === 0) {
+      return;
+    }
+    
+    const profile = currentProfile[0];
+    const lastActivityDate = profile.last_activity_date;
+    
+    // Check if user already has a checkin for today
+    const [existingCheckin]: any = await connection.execute(
+      'SELECT * FROM daily_checkins WHERE user_id = ? AND checkin_date = ?',
+      [userId, today]
+    );
+    
+    if (existingCheckin.length === 0) {
+      // No checkin for today, create one
+      await connection.execute(
+        `INSERT INTO daily_checkins (user_id, checkin_date, quests_completed, total_xp_earned) 
+         VALUES (?, ?, 1, ?)`,
+        [userId, today, xpEarned]
+      );
+    } else {
+      // Update existing checkin
+      await connection.execute(
+        `UPDATE daily_checkins 
+         SET quests_completed = quests_completed + 1, 
+             total_xp_earned = total_xp_earned + ?
+         WHERE user_id = ? AND checkin_date = ?`,
+        [xpEarned, userId, today]
+      );
+    }
+    
+    // Calculate streak
+    let newStreakDays = 1;
+    let streakBroken = false;
+    
+    if (lastActivityDate) {
+      const lastActivity = new Date(lastActivityDate);
+      const todayDate = new Date(today);
+      const diffTime = todayDate.getTime() - lastActivity.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 0) {
+        // Same day, don't change streak
+        newStreakDays = profile.streak_days;
+      } else if (diffDays === 1) {
+        // Consecutive day, increment streak
+        newStreakDays = profile.streak_days + 1;
+      } else {
+        // Gap in days, reset streak
+        newStreakDays = 1;
+        streakBroken = true;
+      }
+    }
+    
+    // Update longest streak if current streak is longer
+    const newLongestStreak = Math.max(profile.longest_streak || 0, newStreakDays);
+    
+    // Update adventurer profile with new streak info
+    await connection.execute(
+      `UPDATE adventurer_profiles 
+       SET streak_days = ?, 
+           longest_streak = ?, 
+           last_activity_date = ?
+       WHERE user_id = ?`,
+      [newStreakDays, newLongestStreak, today, userId]
+    );
+    
+    // Create streak milestone notifications
+    if (newStreakDays === 7) {
+      await connection.execute(
+        `INSERT INTO notifications 
+         (user_id, notification_type, title, message, expires_at) 
+         VALUES (?, 'streak_milestone', '7-Day Streak! 🔥', 'Congratulations on maintaining a week-long streak!', DATE_ADD(NOW(), INTERVAL 30 DAY))`,
+        [userId]
+      );
+    } else if (newStreakDays === 30) {
+      await connection.execute(
+        `INSERT INTO notifications 
+         (user_id, notification_type, title, message, expires_at) 
+         VALUES (?, 'streak_milestone', '30-Day Streak! 💎', 'Amazing! You have maintained a month-long streak!', DATE_ADD(NOW(), INTERVAL 30 DAY))`,
+        [userId]
+      );
+    } else if (newStreakDays % 50 === 0 && newStreakDays > 30) {
+      await connection.execute(
+        `INSERT INTO notifications 
+         (user_id, notification_type, title, message, expires_at) 
+         VALUES (?, 'streak_milestone', ?, 'Incredible dedication! You are on fire!', DATE_ADD(NOW(), INTERVAL 30 DAY))`,
+        [userId, `${newStreakDays}-Day Streak! 🚀`]
+      );
+    }
+    
+    // Warn about streak being at risk (if last activity was yesterday)
+    if (streakBroken && profile.streak_days > 7) {
+      await connection.execute(
+        `INSERT INTO notifications 
+         (user_id, notification_type, title, message, expires_at) 
+         VALUES (?, 'streak_warning', 'Streak Reset', 'Your streak has been reset. Start building it again!', DATE_ADD(NOW(), INTERVAL 7 DAY))`,
+        [userId]
+      );
+    }
+    
+    return {
+      newStreakDays,
+      streakBroken,
+      isNewRecord: newStreakDays > (profile.longest_streak || 0)
+    };
+    
+  } catch (error) {
+    console.error('Streak update error:', error);
+    return null;
   }
 };
