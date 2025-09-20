@@ -1400,36 +1400,6 @@ const StreakDisplay = ({ streakDays, longestStreak }: { streakDays: number, long
 // Replace your coach guidance section in the adventurer dashboard with this improved version
 
 const CoachGuidanceSection = ({ receivedGuidance, markGuidanceAsRead }: any) => {
-  
-  // Same image URL logic as your Navbar component
-  const getCoachImageUrl = (guidance: any) => {
-    const photoUrl = guidance.coach_photo;
-    
-    console.log('Coach Guidance: Raw photo URL from backend:', photoUrl);
-    
-    if (!photoUrl) {
-      console.log('Coach Guidance: No photo URL found');
-      return null;
-    }
-
-    // If it's a base64 data URL (for demo mode)
-    if (photoUrl.startsWith('data:')) {
-      console.log('Coach Guidance: Base64 data URL detected');
-      return photoUrl;
-    }
-
-    // If backend gave full URL, use it directly
-    if (photoUrl.startsWith("http")) {
-      console.log('Coach Guidance: Full URL detected');
-      return photoUrl;
-    }
-
-    // If backend gave relative path like "/uploads/profiles/...", add backend URL
-    const fullUrl = `http://localhost:5000${photoUrl}`;
-    console.log('Coach Guidance: Constructed full URL:', fullUrl);
-    return fullUrl;
-  };
-
   return (
     <div style={{ 
       background: 'rgba(0, 0, 0, 0.7)', 
@@ -1485,194 +1455,172 @@ const CoachGuidanceSection = ({ receivedGuidance, markGuidanceAsRead }: any) => 
         gap: '16px'
       }}>
         {receivedGuidance.length > 0 ? (
-          receivedGuidance.map((guidance: any, index: number) => {
-            const coachImageUrl = getCoachImageUrl(guidance);
-            
-            return (
-              <div
-                key={guidance.feedback_id || index}
-                style={{
-                  background: guidance.is_read 
-                    ? 'rgba(75, 85, 99, 0.3)' 
-                    : 'rgba(147, 51, 234, 0.15)',
-                  border: guidance.is_read 
-                    ? '1px solid rgba(75, 85, 99, 0.4)' 
-                    : '1px solid rgba(147, 51, 234, 0.4)',
-                  borderRadius: '16px',
-                  padding: '20px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
-                }}
-                onClick={() => !guidance.is_read && markGuidanceAsRead(guidance.feedback_id)}
-              >
-                {/* Coach Info Header */}
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '12px', 
-                  marginBottom: '12px' 
-                }}>
-                  {/* Coach Profile Photo - FIXED VERSION */}
-                  <div style={{
-                    width: '40px',
-                    height: '40px',
-                    borderRadius: '50%',
-                    border: '2px solid rgba(147, 51, 234, 0.5)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    overflow: 'hidden',
-                    position: 'relative',
-                    background: coachImageUrl ? 'transparent' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-                  }}>
-                    {coachImageUrl ? (
-                      <img 
-                        src={coachImageUrl}
-                        alt={`${guidance.coach_name || 'Coach'}'s profile`}
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'cover',
-                          borderRadius: '50%'
-                        }}
-                        onLoad={() => {
-                          console.log('✅ Coach image loaded successfully:', coachImageUrl);
-                        }}
-                        onError={(e) => {
-                          console.error('❌ Failed to load coach image:', coachImageUrl);
-                          
-                          // Replace with fallback on error
-                          const target = e.target as HTMLImageElement;
-                          target.style.display = 'none';
-                          const parent = target.parentElement;
-                          if (parent) {
-                            parent.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-                            parent.innerHTML = `<span style="color: white; font-weight: bold; font-size: 14px;">${(guidance.coach_name || guidance.coach_username || 'C').charAt(0).toUpperCase()}</span>`;
-                          }
-                        }}
-                      />
-                    ) : (
-                      <span style={{
-                        color: '#fff',
-                        fontWeight: 'bold',
-                        fontSize: '14px'
-                      }}>
-                        {(guidance.coach_name || guidance.coach_username || 'C').charAt(0).toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Coach Name and Info */}
-                  <div style={{ flex: 1 }}>
-                    <div style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '8px',
-                      marginBottom: '4px'
-                    }}>
-                      <span style={{
-                        color: guidance.is_read ? '#9ca3af' : '#e9d5ff',
-                        fontWeight: '600',
-                        fontSize: '16px'
-                      }}>
-                        {guidance.coach_name || guidance.coach_username || 'Your Coach'}
-                      </span>
-                      <Crown size={14} style={{ color: '#fbbf24' }} />
-                      <span style={{
-                        color: guidance.is_read ? '#6b7280' : '#a855f7',
-                        fontSize: '12px',
-                        fontWeight: '500'
-                      }}>
-                        Coach
-                      </span>
-                    </div>
-                    <div style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '8px',
-                      fontSize: '12px',
-                      color: '#9ca3af'
-                    }}>
-                      <span>{guidance.formatted_date || new Date(guidance.created_at).toLocaleDateString()}</span>
-                      {!guidance.is_read && (
-                        <span style={{
-                          background: '#3b82f6',
-                          color: 'white',
-                          padding: '2px 6px',
-                          borderRadius: '8px',
-                          fontSize: '10px',
-                          fontWeight: '600'
-                        }}>
-                          NEW
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Message Content */}
+          receivedGuidance.map((guidance: any, index: number) => (
+            <div
+              key={guidance.feedback_id || index}
+              style={{
+                background: guidance.is_read 
+                  ? 'rgba(75, 85, 99, 0.3)' 
+                  : 'rgba(147, 51, 234, 0.15)',
+                border: guidance.is_read 
+                  ? '1px solid rgba(75, 85, 99, 0.4)' 
+                  : '1px solid rgba(147, 51, 234, 0.4)',
+                borderRadius: '16px',
+                padding: '20px',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                position: 'relative'
+              }}
+              onClick={() => !guidance.is_read && markGuidanceAsRead(guidance.feedback_id)}
+              onMouseEnter={(e) => {
+                if (!guidance.is_read) {
+                  e.currentTarget.style.background = 'rgba(147, 51, 234, 0.25)';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!guidance.is_read) {
+                  e.currentTarget.style.background = 'rgba(147, 51, 234, 0.15)';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                }
+              }}
+            >
+              {/* Coach Info Header */}
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '12px', 
+                marginBottom: '12px' 
+              }}>
+                {/* Coach Profile Photo */}
                 <div style={{
-                  color: guidance.is_read ? '#d1d5db' : '#f3f4f6',
-                  fontSize: '14px',
-                  lineHeight: '1.6',
-                  marginBottom: '12px',
-                  padding: '12px',
-                  background: 'rgba(0, 0, 0, 0.2)',
-                  borderRadius: '8px',
-                  borderLeft: '3px solid rgba(147, 51, 234, 0.6)'
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '50%',
+                  background: guidance.coach_photo 
+                    ? `url(${guidance.coach_photo})` 
+                    : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  border: '2px solid rgba(147, 51, 234, 0.5)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  fontWeight: 'bold',
+                  fontSize: '14px'
                 }}>
-                  {guidance.feedback_text}
+                  {!guidance.coach_photo && (guidance.coach_name || guidance.coach_username || 'C').charAt(0).toUpperCase()}
                 </div>
 
-                {/* Message Footer */}
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center',
-                  fontSize: '12px'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {/* Coach Name and Info */}
+                <div style={{ flex: 1 }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '8px',
+                    marginBottom: '4px'
+                  }}>
                     <span style={{
-                      background: guidance.is_read 
-                        ? 'rgba(107, 114, 128, 0.3)' 
-                        : 'rgba(147, 51, 234, 0.4)',
-                      padding: '4px 8px',
-                      borderRadius: '20px',
-                      textTransform: 'capitalize',
                       color: guidance.is_read ? '#9ca3af' : '#e9d5ff',
-                      fontWeight: '600'
+                      fontWeight: '600',
+                      fontSize: '16px'
                     }}>
-                      {guidance.feedback_type || 'guidance'}
+                      {guidance.coach_name || guidance.coach_username || 'Your Coach'}
                     </span>
-                    
-                    {guidance.rating && (
-                      <div style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '4px',
-                        color: '#fbbf24'
+                    <Crown size={14} style={{ color: '#fbbf24' }} />
+                    <span style={{
+                      color: guidance.is_read ? '#6b7280' : '#a855f7',
+                      fontSize: '12px',
+                      fontWeight: '500'
+                    }}>
+                      Coach
+                    </span>
+                  </div>
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '8px',
+                    fontSize: '12px',
+                    color: '#9ca3af'
+                  }}>
+                    <span>{guidance.formatted_date}</span>
+                    {!guidance.is_read && (
+                      <span style={{
+                        background: '#3b82f6',
+                        color: 'white',
+                        padding: '2px 6px',
+                        borderRadius: '8px',
+                        fontSize: '10px',
+                        fontWeight: '600'
                       }}>
-                        {Array(guidance.rating).fill(0).map((_, i) => (
-                          <Star key={i} size={12} fill="currentColor" />
-                        ))}
-                      </div>
+                        NEW
+                      </span>
                     )}
                   </div>
+                </div>
+              </div>
 
-                  {!guidance.is_read && (
-                    <div style={{
-                      color: '#a855f7',
-                      fontSize: '11px',
-                      fontWeight: '500',
-                      opacity: 0.8
+              {/* Message Content */}
+              <div style={{
+                color: guidance.is_read ? '#d1d5db' : '#f3f4f6',
+                fontSize: '14px',
+                lineHeight: '1.6',
+                marginBottom: '12px',
+                padding: '12px',
+                background: 'rgba(0, 0, 0, 0.2)',
+                borderRadius: '8px',
+                borderLeft: '3px solid rgba(147, 51, 234, 0.6)'
+              }}>
+                {guidance.feedback_text}
+              </div>
+
+              {/* Message Footer */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                fontSize: '12px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{
+                    background: guidance.is_read 
+                      ? 'rgba(107, 114, 128, 0.3)' 
+                      : 'rgba(147, 51, 234, 0.4)',
+                    padding: '4px 8px',
+                    borderRadius: '20px',
+                    textTransform: 'capitalize',
+                    color: guidance.is_read ? '#9ca3af' : '#e9d5ff',
+                    fontWeight: '600'
+                  }}>
+                    {guidance.feedback_type || 'guidance'}
+                  </span>
+                  
+                  {guidance.rating && (
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '4px',
+                      color: '#fbbf24'
                     }}>
-                      Click to mark as read
+                      {'★'.repeat(guidance.rating)}
                     </div>
                   )}
                 </div>
+
+                {!guidance.is_read && (
+                  <div style={{
+                    color: '#a855f7',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    opacity: 0.8
+                  }}>
+                    Click to mark as read
+                  </div>
+                )}
               </div>
-            );
-          })
+            </div>
+          ))
         ) : (
           // Empty State
           <div style={{ 
@@ -1714,6 +1662,7 @@ const CoachGuidanceSection = ({ receivedGuidance, markGuidanceAsRead }: any) => 
               Your coach hasn't sent any guidance messages yet. Keep up the great work on your quests!
             </p>
             
+            {/* Motivational element */}
             <div style={{
               marginTop: '20px',
               padding: '12px 20px',
@@ -1732,4 +1681,3 @@ const CoachGuidanceSection = ({ receivedGuidance, markGuidanceAsRead }: any) => 
     </div>
   );
 };
-

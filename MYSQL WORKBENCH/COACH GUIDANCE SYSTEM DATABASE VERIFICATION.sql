@@ -198,3 +198,48 @@ FROM coach_feedback WHERE is_read = FALSE;
 --     COUNT(CASE WHEN is_read = FALSE THEN 1 END) as unread_messages
 -- FROM coach_feedback 
 -- WHERE student_user_id = 1;
+
+DESCRIBE coach_profiles;
+ALTER TABLE coach_profiles 
+ADD COLUMN total_students_coached INT DEFAULT 0,
+ADD COLUMN success_stories INT DEFAULT 0,
+ADD COLUMN certification VARCHAR(255);
+INSERT IGNORE INTO coach_profiles (user_id, full_name, bio, specialization, years_experience, total_students_coached, success_stories, current_students, max_students)
+SELECT 
+    u.user_id,
+    u.username as full_name,
+    'Experienced life coach dedicated to helping adventurers achieve their goals.' as bio,
+    'Life Coach' as specialization,
+    1 as years_experience,
+    0 as total_students_coached,
+    0 as success_stories,
+    0 as current_students,
+    20 as max_students
+FROM users u
+LEFT JOIN coach_profiles cp ON u.user_id = cp.user_id
+WHERE u.user_type = 'coach' AND cp.user_id IS NULL;
+
+UPDATE coach_profiles cp
+SET current_students = (
+    SELECT COUNT(*) 
+    FROM coach_student_relationships csr 
+    WHERE csr.coach_user_id = cp.user_id 
+    AND csr.status = 'active'
+);
+SELECT 
+    cp.*,
+    u.username
+FROM coach_profiles cp
+JOIN users u ON cp.user_id = u.user_id
+ORDER BY cp.user_id;
+SELECT 
+    cf.feedback_id,
+    cf.feedback_text,
+    u.username as coach_username,
+    cp.full_name as coach_name,
+    cp.total_students_coached,
+    cp.years_experience
+FROM coach_feedback cf
+LEFT JOIN users u ON cf.coach_user_id = u.user_id
+LEFT JOIN coach_profiles cp ON cf.coach_user_id = cp.user_id
+LIMIT 1;

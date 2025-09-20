@@ -210,3 +210,64 @@ export const removeStudent = async (req: AuthRequest, res: Response) => {
     connection.release();
   }
 };
+export const getStudentStats = async (req: AuthRequest, res: Response) => {
+  try {
+    const coachId = req.user?.user_id;
+    const { student_id } = req.params;
+
+    // Verify the coach has access to this student
+    const [relationship]: any = await pool.execute(
+      `SELECT csr.* FROM coach_student_relationships csr 
+       WHERE csr.coach_user_id = ? AND csr.student_user_id = ? AND csr.status = 'active'`,
+      [coachId, student_id]
+    );
+
+    if (relationship.length === 0) {
+      return res.status(403).json({ error: 'No access to this student' });
+    }
+
+    // Get student profile
+    const [profile]: any = await pool.execute(
+      'SELECT * FROM adventurer_profiles WHERE user_id = ?',
+      [student_id]
+    );
+
+    // Get student stats
+    const [stats]: any = await pool.execute(
+      'SELECT * FROM user_stats WHERE user_id = ? ORDER BY stat_name',
+      [student_id]
+    );
+
+    // Get student's quest completion data
+    const [quests]: any = await pool.execute(
+      `SELECT 
+        COUNT(*) as total_quests_completed,
+        COUNT(CASE WHEN DATE(completed_at) = CURDATE() THEN 1 END) as quests_today,
+        COUNT(CASE WHEN completed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) as quests_this_week
+       FROM quest_completion_history 
+       WHERE user_id = ?`,
+      [student_id]
+    );
+
+    // Get student's achievements
+    const [achievements]: any = await pool.execute(
+      `SELECT ua.*, a.achievement_name, a.achievement_description, a.achievement_icon
+       FROM user_achievements ua
+       JOIN achievements a ON ua.achievement_id = a.achievement_id
+       WHERE ua.user_id = ?
+       ORDER BY ua.earned_at DESC`,
+      [student_id]
+    );
+
+    res.json({
+      student_profile: profile[0] || null,
+      student_stats: stats || [],
+      quest_progress: quests[0] || { total_quests_completed: 0, quests_today: 0, quests_this_week: 0 },
+      achievements: achievements || []
+    });
+
+  } catch (error: any) {
+    console.error('Get student stats error:', error);
+    res.status(500).json({ error: 'Failed to fetch student stats' });
+  }
+};

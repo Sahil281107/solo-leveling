@@ -224,6 +224,50 @@ export default function CoachDashboard() {
     }
   };
 
+  const handleStudentClick = async (student: any) => {
+  try {
+    // Set the selected student immediately for UI feedback
+    setSelectedStudent(student);
+    setStudentStats(null); // Clear previous stats
+    
+    // Fetch comprehensive student data
+    const response = await api.get(`/coach/student-stats/${student.user_id}`);
+    
+    // Update all student-related data
+    setSelectedStudent(response.data.student_profile || student);
+    setStudentStats(response.data.student_stats || []);
+    
+    // You can also set additional data if you want to display more info
+    // setStudentQuests(response.data.quest_progress);
+    // setStudentAchievements(response.data.achievements);
+    
+  } catch (error: any) {
+    console.error('Failed to fetch student stats:', error);
+    
+    // Fallback: try to fetch basic stats
+    try {
+      const basicResponse = await api.get(`/users/profile/${student.user_id}`);
+      if (basicResponse.data.stats) {
+        setStudentStats(basicResponse.data.stats);
+      }
+    } catch (fallbackError) {
+      console.warn('Fallback stats fetch also failed:', fallbackError);
+      
+      // Set default stats so something shows
+      setStudentStats([
+        { stat_name: 'Strength', stat_icon: '💪', current_value: 10, max_value: 100 },
+        { stat_name: 'Intelligence', stat_icon: '🧠', current_value: 10, max_value: 100 },
+        { stat_name: 'Agility', stat_icon: '⚡', current_value: 10, max_value: 100 },
+        { stat_name: 'Stamina', stat_icon: '🏃', current_value: 10, max_value: 100 },
+        { stat_name: 'Wisdom', stat_icon: '📚', current_value: 10, max_value: 100 },
+        { stat_name: 'Charisma', stat_icon: '✨', current_value: 10, max_value: 100 }
+      ]);
+    }
+    
+    toast.error('Some student data may be incomplete');
+  }
+};
+
   if (loading) {
     return (
       <div className="hero" style={{ background: '#000' }}>
@@ -531,7 +575,7 @@ export default function CoachDashboard() {
                       padding: '20px',
                       transition: 'all 0.3s ease',
                     }}
-                    onClick={() => setSelectedStudent(student)}
+                    onClick={() => handleStudentClick(student)}
                     onMouseEnter={(e) => {
                       if (selectedStudent?.user_id !== student.user_id) {
                         e.currentTarget.style.transform = 'translateX(8px)';
