@@ -1,3 +1,4 @@
+// src/middleware/auth.ts
 import { Request, Response, NextFunction } from 'express';
 import pool from '../config/database';
 const jwt = require('jsonwebtoken');
@@ -49,80 +50,97 @@ const validateSessionInDB = async (sessionId: string, userId: number): Promise<b
   }
 };
 
+// Main authentication middleware
 export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  const connection = await pool.getConnection();
+  
   try {
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'No token provided' });
+      return res.status(401).json({ 
+        error: 'Access token required',
+        code: 'NO_TOKEN'
+      });
     }
     
     const token = authHeader.split(' ')[1];
     
     // Verify JWT token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET) as any;
-    
-    // Check if token has session_id (new tokens should have this)
-    if (decoded.session_id) {
-      // Validate session in database
-      const isValidSession = await validateSessionInDB(decoded.session_id, decoded.user_id);
-      
-      if (!isValidSession) {
-        return res.status(401).json({ 
-          error: 'Session expired or invalid',
-          code: 'SESSION_EXPIRED'
-        });
-      }
-    }
-    
-    // Get fresh user data from database to ensure account is still active
-    const connection = await pool.getConnection();
+    let decoded;
     try {
-      const [users]: any = await connection.execute(
-        'SELECT user_id, email, username, user_type, is_active FROM users WHERE user_id = ?',
-        [decoded.user_id]
-      );
-      
-      if (users.length === 0 || !users[0].is_active) {
+      decoded = jwt.verify(token, process.env.JWT_SECRET) as any;
+    } catch (jwtError: any) {
+      if (jwtError.name === 'JsonWebTokenError') {
         return res.status(401).json({ 
-          error: 'User account not found or inactive',
-          code: 'ACCOUNT_INACTIVE'
+          error: 'Invalid token',
+          code: 'INVALID_TOKEN'
+        });
+      } else if (jwtError.name === 'TokenExpiredError') {
+        return res.status(401).json({ 
+          error: 'Token expired',
+          code: 'TOKEN_EXPIRED'
+        });
+      } else {
+        return res.status(401).json({ 
+          error: 'Token verification failed',
+          code: 'TOKEN_VERIFICATION_FAILED'
         });
       }
-      
-      // Attach user data to request
-      req.user = {
-        user_id: decoded.user_id,
-        email: decoded.email,
-        user_type: decoded.user_type,
-        session_id: decoded.session_id,
-        username: users[0].username,
-        is_active: users[0].is_active
-      };
-      
-    } finally {
-      connection.release();
     }
+    
+    // Validate session in database only if session_id exists in token
+    // This provides backward compatibility with tokens that don't have session_id
+    if (decoded.session_id) {
+      try {
+        const isValidSession = await validateSessionInDB(decoded.session_id, decoded.user_id);
+        if (!isValidSession) {
+          return res.status(401).json({ 
+            error: 'Session expired or invalid',
+            code: 'SESSION_EXPIRED'
+          });
+        }
+      } catch (sessionError) {
+        console.error('Session validation error:', sessionError);
+        // Continue without session validation if there's a database error
+        // This prevents the system from breaking due to temporary DB issues
+        console.warn('Continuing without session validation due to DB error');
+      }
+    }
+    
+    // Validate user still exists and is active
+    const [users]: any = await connection.execute(
+      'SELECT user_id, username, is_active FROM users WHERE user_id = ?',
+      [decoded.user_id]
+    );
+    
+    if (users.length === 0 || !users[0].is_active) {
+      return res.status(401).json({ 
+        error: 'User account not found or inactive',
+        code: 'ACCOUNT_INACTIVE'
+      });
+    }
+    
+    // Attach user data to request
+    req.user = {
+      user_id: decoded.user_id,
+      email: decoded.email,
+      user_type: decoded.user_type,
+      session_id: decoded.session_id,
+      username: users[0].username,
+      is_active: users[0].is_active
+    };
     
     next();
+    
   } catch (error: any) {
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ 
-        error: 'Invalid token',
-        code: 'INVALID_TOKEN'
-      });
-    } else if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ 
-        error: 'Token expired',
-        code: 'TOKEN_EXPIRED'
-      });
-    } else {
-      console.error('Authentication error:', error);
-      return res.status(401).json({ 
-        error: 'Authentication failed',
-        code: 'AUTH_FAILED'
-      });
-    }
+    console.error('Authentication error:', error);
+    return res.status(401).json({ 
+      error: 'Authentication failed',
+      code: 'AUTH_FAILED'
+    });
+  } finally {
+    connection.release();
   }
 };
 
@@ -187,9 +205,15 @@ export const optionalAuth = async (req: AuthRequest, res: Response, next: NextFu
     
     // Validate session if present
     if (decoded.session_id) {
-      const isValidSession = await validateSessionInDB(decoded.session_id, decoded.user_id);
-      if (!isValidSession) {
-        // Invalid session, continue without authentication
+      try {
+        const isValidSession = await validateSessionInDB(decoded.session_id, decoded.user_id);
+        if (!isValidSession) {
+          // Invalid session, continue without authentication
+          return next();
+        }
+      } catch (sessionError) {
+        // Session validation failed, continue without authentication
+        console.warn('Session validation failed in optionalAuth:', sessionError);
         return next();
       }
     }
@@ -227,7 +251,7 @@ export const authRateLimit = (maxAttempts: number = 5, windowMs: number = 15 * 6
     if (clientAttempts.count >= maxAttempts) {
       return res.status(429).json({ 
         error: 'Too many authentication attempts. Please try again later.',
-        retryAfter: Math.ceil((clientAttempts.resetTime - now) / 1000)
+        retry_after: Math.ceil((clientAttempts.resetTime - now) / 1000)
       });
     }
     

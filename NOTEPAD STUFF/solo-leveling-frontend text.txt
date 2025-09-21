@@ -23,6 +23,7 @@ app/coach/page.tsx
 // app/coach/page.tsx
 'use client';
 import { useEffect, useState } from 'react';
+import Cookies from 'js-cookie';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -51,7 +52,7 @@ export default function CoachDashboard() {
   const [currentBg, setCurrentBg] = useState(0);
   const [showRemoveModal, setShowRemoveModal] = useState(false);
   const [studentToRemove, setStudentToRemove] = useState<any>(null);
-  
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [coachProfile, setCoachProfile] = useState({
     bio: '',
     achievements: [],
@@ -111,6 +112,27 @@ export default function CoachDashboard() {
       clearInterval(quoteTimer);
     };
   }, []);
+useEffect(() => {
+  // Validate session when the page becomes visible again (user returns from another tab/site)
+  const handleVisibilityChange = async () => {
+    if (!document.hidden) {
+      try {
+        await api.get('/auth/health');
+      } catch (error: any) {
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          console.warn('Session validation failed, user will be redirected on next action');
+        }
+      }
+    }
+  };
+  
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  
+  // Cleanup
+  return () => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  };
+}, []);
 
   const fetchStudents = async () => {
     try {
@@ -157,42 +179,106 @@ export default function CoachDashboard() {
     }
   };
 
-  const provideFeedback = async () => {
-    if (!feedbackText.trim() || !selectedStudent) return;
+ const provideFeedback = async () => {
+  if (!feedbackText.trim() || !selectedStudent || isSubmitting) return;
+  
+  try {
+    setIsSubmitting(true);
     
-    try {
-      await api.post('/coach/feedback', {
-        student_id: selectedStudent.user_id,
-        feedback_type: 'guidance',
-        feedback_text: feedbackText,
-        rating: 5
-      });
-      
-      // Track sent feedback
-      const newFeedback = {
-        id: Date.now(),
-        student_id: selectedStudent.user_id,
-        student_name: selectedStudent.full_name,
-        text: feedbackText,
-        sent_at: new Date().toISOString(),
-        read: false
-      };
-      
-      setSentFeedbacks([newFeedback, ...sentFeedbacks]);
-      setFeedbackText('');
-      
-      toast.success('📨 Guidance sent successfully! Student will be notified.');
-      
-      // Simulate read status after 5 seconds (in real app, this would come from backend)
-      setTimeout(() => {
-        setSentFeedbacks(prev => prev.map(f => 
-          f.id === newFeedback.id ? {...f, read: true} : f
-        ));
-      }, 5000);
-    } catch (error) {
-      toast.error('Failed to send feedback');
+    // Verify we still have a valid session before sending feedback
+    const token = Cookies.get('token');
+    if (!token) {
+      toast.error('❌ Session expired. Please log in again.');
+      window.location.href = '/login';
+      return;
     }
-  };
+
+    // First, make a quick health check to ensure our session is still valid
+    try {
+      await api.get('/auth/health');
+    } catch (healthError: any) {
+      if (healthError.response?.status === 401 || healthError.response?.status === 403) {
+        toast.error('❌ Session expired. Please log in again.');
+        Cookies.remove('token');
+        Cookies.remove('user');
+        Cookies.remove('profile');
+        window.location.href = '/login';
+        return;
+      }
+    }
+
+    // Send the feedback
+    await api.post('/coach/feedback', {
+      student_id: selectedStudent.user_id,
+      feedback_type: 'guidance',
+      feedback_text: feedbackText,
+      rating: 5
+    });
+
+    // Success - update local state
+    const newFeedback = {
+      id: Date.now(),
+      student_id: selectedStudent.user_id,
+      student_name: selectedStudent.full_name,
+      text: feedbackText,
+      sent_at: new Date().toISOString(),
+      read: false
+    };
+    
+    setSentFeedbacks([newFeedback, ...sentFeedbacks]);
+    setFeedbackText('');
+    
+    toast.success('📨 Guidance sent successfully! Student will be notified.');
+    
+    // Simulate read status after 5 seconds
+    setTimeout(() => {
+      setSentFeedbacks(prev => prev.map(f => 
+        f.id === newFeedback.id ? { ...f, read: true } : f
+      ));
+    }, 5000);
+    
+  } catch (error: any) {
+    console.error('Feedback submission error:', error);
+    
+    // Handle specific error cases
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      const errorCode = error.response?.data?.code;
+      
+      switch (errorCode) {
+        case 'TOKEN_EXPIRED':
+        case 'SESSION_EXPIRED':
+          toast.error('❌ Your session has expired. Please log in again.');
+          Cookies.remove('token');
+          Cookies.remove('user');
+          Cookies.remove('profile');
+          setTimeout(() => {
+            window.location.href = '/login';
+          }, 1000);
+          break;
+          
+        case 'ACCOUNT_INACTIVE':
+          toast.error('❌ Your account is not active. Please contact support.');
+          break;
+          
+        default:
+          toast.error('❌ Authentication failed. Please log in again.');
+          setTimeout(() => {
+            window.location.href = '/login';
+          }, 1000);
+          break;
+      }
+    } else if (error.response?.status === 500) {
+      toast.error('❌ Server error. Please try again in a moment.');
+    } else if (!error.response) {
+      toast.error('❌ Network error. Please check your connection.');
+    } else {
+      toast.error('❌ Failed to send guidance: ' + (error.response?.data?.error || 'Unknown error'));
+    }
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
 
   // Handler for when profile image is updated
   const handleProfileUpdate = (updatedUser: any) => {
@@ -871,39 +957,46 @@ export default function CoachDashboard() {
                         }}
                       />
                       <button
-                        onClick={provideFeedback}
-                        disabled={!feedbackText.trim()}
-                        style={{
-                          position: 'absolute',
-                          right: '12px',
-                          bottom: '12px',
-                          width: '40px',
-                          height: '40px',
-                          borderRadius: '50%',
-                          background: feedbackText.trim() 
-                            ? 'linear-gradient(135deg, #9333ea, #ec4899)' 
-                            : 'rgba(147, 51, 234, 0.3)',
-                          border: 'none',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          cursor: feedbackText.trim() ? 'pointer' : 'not-allowed',
-                          transition: 'all 0.3s ease',
-                          color: '#fff',
-                        }}
-                        onMouseEnter={(e) => {
-                          if (feedbackText.trim()) {
-                            e.currentTarget.style.transform = 'scale(1.1)';
-                            e.currentTarget.style.boxShadow = '0 4px 20px rgba(147, 51, 234, 0.6)';
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.transform = 'scale(1)';
-                          e.currentTarget.style.boxShadow = 'none';
-                        }}
-                      >
-                        <Send size={20} />
-                      </button>
+  onClick={provideFeedback}
+  disabled={!feedbackText.trim() || !selectedStudent || isSubmitting}
+  style={{
+    position: 'absolute',
+    right: '12px',
+    bottom: '12px',
+    width: '40px',
+    height: '40px',
+    borderRadius: '50%',
+    background: (feedbackText.trim() && selectedStudent && !isSubmitting)
+      ? 'linear-gradient(135deg, #9333ea, #ec4899)' 
+      : 'rgba(147, 51, 234, 0.3)',
+    border: 'none',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: (feedbackText.trim() && selectedStudent && !isSubmitting) ? 'pointer' : 'not-allowed',
+    transition: 'all 0.3s ease',
+    color: '#fff',
+  }}
+  onMouseEnter={(e) => {
+    if (feedbackText.trim() && selectedStudent && !isSubmitting) {
+      e.currentTarget.style.transform = 'scale(1.1)';
+      e.currentTarget.style.boxShadow = '0 4px 20px rgba(147, 51, 234, 0.6)';
+    }
+  }}
+  onMouseLeave={(e) => {
+    e.currentTarget.style.transform = 'scale(1)';
+    e.currentTarget.style.boxShadow = 'none';
+  }}
+>
+  {isSubmitting ? (
+    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+    </svg>
+  ) : (
+    <Send size={20} />
+  )}
+</button>
                     </div>
                     
                     {/* Recent Feedback Status */}
@@ -1408,6 +1501,8 @@ export default function CoachDashboard() {
     </div>
   );
 }
+
+
 
 
 
@@ -7048,6 +7143,7 @@ export function useStats() {
 
 
 lib/api.ts
+// lib/api.ts
 import axios from 'axios';
 import Cookies from 'js-cookie';
 
@@ -7058,25 +7154,142 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 10000, // 10 second timeout
 });
+
+// Track if we're currently refreshing to avoid multiple refresh attempts
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (value?: any) => void;
+  reject: (error?: any) => void;
+}> = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach(({ resolve, reject }) => {
+    if (error) {
+      reject(error);
+    } else {
+      resolve(token);
+    }
+  });
+  
+  failedQueue = [];
+};
 
 // Add auth token to requests
-api.interceptors.request.use((config) => {
-  const token = Cookies.get('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+api.interceptors.request.use(
+  (config) => {
+    const token = Cookies.get('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
   }
-  return config;
-});
+);
 
-// Handle auth errors
+// Handle auth errors with improved retry logic
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      Cookies.remove('token');
-      window.location.href = '/login';
+  async (error) => {
+    const originalRequest = error.config;
+
+    // Check if it's an authentication error
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      const errorCode = error.response?.data?.code;
+      
+      // Handle specific error codes
+      switch (errorCode) {
+        case 'TOKEN_EXPIRED':
+        case 'SESSION_EXPIRED':
+        case 'INVALID_TOKEN':
+          // If we're already refreshing, add this request to the queue
+          if (isRefreshing) {
+            return new Promise((resolve, reject) => {
+              failedQueue.push({ resolve, reject });
+            }).then(token => {
+              originalRequest.headers.Authorization = `Bearer ${token}`;
+              return api(originalRequest);
+            }).catch(err => {
+              return Promise.reject(err);
+            });
+          }
+
+          // Mark that we're refreshing
+          originalRequest._retry = true;
+          isRefreshing = true;
+
+          try {
+            // Try to refresh the session by making a test API call
+            // If the token is still valid (maybe it was a temporary session issue)
+            const testResponse = await axios.get(`${API_URL}/auth/health`, {
+              headers: {
+                Authorization: `Bearer ${Cookies.get('token')}`
+              }
+            });
+
+            if (testResponse.status === 200) {
+              // Token is still valid, retry the original request
+              isRefreshing = false;
+              processQueue(null, Cookies.get('token'));
+              return api(originalRequest);
+            }
+          } catch (refreshError) {
+            // Token is definitely invalid, redirect to login
+            isRefreshing = false;
+            processQueue(refreshError, null);
+            
+            // Clear all auth cookies
+            Cookies.remove('token');
+            Cookies.remove('user');
+            Cookies.remove('profile');
+            
+            // Only redirect if not already on login page
+            if (!window.location.pathname.includes('/login')) {
+              // Add a small delay to prevent immediate redirect loops
+              setTimeout(() => {
+                window.location.href = '/login?expired=true';
+              }, 100);
+            }
+            
+            return Promise.reject(error);
+          }
+          break;
+
+        case 'ACCOUNT_INACTIVE':
+          // Handle inactive account
+          Cookies.remove('token');
+          Cookies.remove('user');
+          Cookies.remove('profile');
+          
+          if (!window.location.pathname.includes('/login')) {
+            window.location.href = '/login?inactive=true';
+          }
+          break;
+
+        default:
+          // For other 401/403 errors, redirect to login
+          if (!originalRequest._retry) {
+            Cookies.remove('token');
+            Cookies.remove('user');
+            Cookies.remove('profile');
+            
+            if (!window.location.pathname.includes('/login')) {
+              window.location.href = '/login';
+            }
+          }
+          break;
+      }
     }
+
+    // Handle network errors
+    if (!error.response) {
+      console.error('Network error:', error.message);
+      // You could show a toast notification here about network issues
+    }
+
     return Promise.reject(error);
   }
 );
@@ -7259,6 +7472,226 @@ export const getProfileImageUrl = (user: any) => {
   // If it's a relative path, prepend backend URL
   return `http://localhost:5000${imageUrl}`;
 };
+
+
+
+
+lib/sessionManager.ts
+// lib/sessionManager.ts
+// This utility helps manage user sessions and handle authentication issues
+
+import Cookies from 'js-cookie';
+import api from './api';
+
+interface SessionValidationResult {
+  isValid: boolean;
+  needsRefresh: boolean;
+  errorCode?: string;
+}
+
+class SessionManager {
+  private static instance: SessionManager;
+  private validationCache: { [key: string]: { timestamp: number; isValid: boolean } } = {};
+  private readonly CACHE_DURATION = 2 * 60 * 1000; // 2 minutes cache
+
+  static getInstance(): SessionManager {
+    if (!SessionManager.instance) {
+      SessionManager.instance = new SessionManager();
+    }
+    return SessionManager.instance;
+  }
+
+  /**
+   * Validates the current session
+   */
+  async validateSession(): Promise<SessionValidationResult> {
+    const token = Cookies.get('token');
+    
+    if (!token) {
+      return { isValid: false, needsRefresh: true, errorCode: 'NO_TOKEN' };
+    }
+
+    // Check cache first
+    const cacheKey = token.substring(0, 20); // Use part of token as cache key
+    const cached = this.validationCache[cacheKey];
+    
+    if (cached && (Date.now() - cached.timestamp) < this.CACHE_DURATION) {
+      return { isValid: cached.isValid, needsRefresh: !cached.isValid };
+    }
+
+    try {
+      const response = await api.get('/auth/health');
+      
+      // Cache successful validation
+      this.validationCache[cacheKey] = {
+        timestamp: Date.now(),
+        isValid: true
+      };
+      
+      return { isValid: true, needsRefresh: false };
+      
+    } catch (error: any) {
+      // Cache failed validation
+      this.validationCache[cacheKey] = {
+        timestamp: Date.now(),
+        isValid: false
+      };
+      
+      const errorCode = error.response?.data?.code || 'UNKNOWN_ERROR';
+      return { 
+        isValid: false, 
+        needsRefresh: true, 
+        errorCode 
+      };
+    }
+  }
+
+  /**
+   * Clears all authentication data
+   */
+  clearAuthData(): void {
+    Cookies.remove('token');
+    Cookies.remove('user');
+    Cookies.remove('profile');
+    this.clearCache();
+  }
+
+  /**
+   * Clears the validation cache
+   */
+  clearCache(): void {
+    this.validationCache = {};
+  }
+
+  /**
+   * Redirects to login with appropriate query parameters
+   */
+  redirectToLogin(reason?: string): void {
+    this.clearAuthData();
+    
+    const loginUrl = reason ? `/login?reason=${reason}` : '/login';
+    
+    // Prevent redirect loops
+    if (!window.location.pathname.includes('/login')) {
+      window.location.href = loginUrl;
+    }
+  }
+
+  /**
+   * Checks if user is authenticated
+   */
+  isAuthenticated(): boolean {
+    const token = Cookies.get('token');
+    const user = Cookies.get('user');
+    return !!(token && user);
+  }
+
+  /**
+   * Gets the current user data
+   */
+  getCurrentUser(): any {
+    const userCookie = Cookies.get('user');
+    try {
+      return userCookie ? JSON.parse(userCookie) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Validates session before making important API calls
+   */
+  async ensureValidSession(): Promise<boolean> {
+    const validation = await this.validateSession();
+    
+    if (!validation.isValid) {
+      if (validation.errorCode === 'TOKEN_EXPIRED' || 
+          validation.errorCode === 'SESSION_EXPIRED') {
+        this.redirectToLogin('expired');
+      } else if (validation.errorCode === 'ACCOUNT_INACTIVE') {
+        this.redirectToLogin('inactive');
+      } else {
+        this.redirectToLogin('invalid');
+      }
+      return false;
+    }
+    
+    return true;
+  }
+
+  /**
+   * Setup automatic session validation
+   */
+  startSessionMonitoring(): void {
+    // Validate session every 5 minutes
+    const intervalId = setInterval(async () => {
+      if (this.isAuthenticated()) {
+        const validation = await this.validateSession();
+        if (!validation.isValid) {
+          console.warn('Session validation failed during monitoring');
+        }
+      }
+    }, 5 * 60 * 1000);
+
+    // Validate when page becomes visible
+    const handleVisibilityChange = async () => {
+      if (!document.hidden && this.isAuthenticated()) {
+        await this.validateSession();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Store cleanup function
+    (window as any).__sessionCleanup = () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }
+
+  /**
+   * Stop session monitoring
+   */
+  stopSessionMonitoring(): void {
+    if ((window as any).__sessionCleanup) {
+      (window as any).__sessionCleanup();
+      delete (window as any).__sessionCleanup;
+    }
+  }
+}
+
+export const sessionManager = SessionManager.getInstance();
+
+// Hook for React components
+export const useSessionValidation = () => {
+  const validateAndEnsure = async (): Promise<boolean> => {
+    return await sessionManager.ensureValidSession();
+  };
+
+  const isAuthenticated = (): boolean => {
+    return sessionManager.isAuthenticated();
+  };
+
+  const getCurrentUser = () => {
+    return sessionManager.getCurrentUser();
+  };
+
+  const logout = () => {
+    sessionManager.clearAuthData();
+    sessionManager.redirectToLogin('logout');
+  };
+
+  return {
+    validateAndEnsure,
+    isAuthenticated,
+    getCurrentUser,
+    logout
+  };
+};
+
+export default sessionManager;
+
+
 
 
 

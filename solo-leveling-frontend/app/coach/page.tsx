@@ -1,6 +1,7 @@
 // app/coach/page.tsx
 'use client';
 import { useEffect, useState } from 'react';
+import Cookies from 'js-cookie';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -29,7 +30,7 @@ export default function CoachDashboard() {
   const [currentBg, setCurrentBg] = useState(0);
   const [showRemoveModal, setShowRemoveModal] = useState(false);
   const [studentToRemove, setStudentToRemove] = useState<any>(null);
-  
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [coachProfile, setCoachProfile] = useState({
     bio: '',
     achievements: [],
@@ -89,6 +90,27 @@ export default function CoachDashboard() {
       clearInterval(quoteTimer);
     };
   }, []);
+useEffect(() => {
+  // Validate session when the page becomes visible again (user returns from another tab/site)
+  const handleVisibilityChange = async () => {
+    if (!document.hidden) {
+      try {
+        await api.get('/auth/health');
+      } catch (error: any) {
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          console.warn('Session validation failed, user will be redirected on next action');
+        }
+      }
+    }
+  };
+  
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  
+  // Cleanup
+  return () => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  };
+}, []);
 
   const fetchStudents = async () => {
     try {
@@ -135,42 +157,106 @@ export default function CoachDashboard() {
     }
   };
 
-  const provideFeedback = async () => {
-    if (!feedbackText.trim() || !selectedStudent) return;
+ const provideFeedback = async () => {
+  if (!feedbackText.trim() || !selectedStudent || isSubmitting) return;
+  
+  try {
+    setIsSubmitting(true);
     
-    try {
-      await api.post('/coach/feedback', {
-        student_id: selectedStudent.user_id,
-        feedback_type: 'guidance',
-        feedback_text: feedbackText,
-        rating: 5
-      });
-      
-      // Track sent feedback
-      const newFeedback = {
-        id: Date.now(),
-        student_id: selectedStudent.user_id,
-        student_name: selectedStudent.full_name,
-        text: feedbackText,
-        sent_at: new Date().toISOString(),
-        read: false
-      };
-      
-      setSentFeedbacks([newFeedback, ...sentFeedbacks]);
-      setFeedbackText('');
-      
-      toast.success('📨 Guidance sent successfully! Student will be notified.');
-      
-      // Simulate read status after 5 seconds (in real app, this would come from backend)
-      setTimeout(() => {
-        setSentFeedbacks(prev => prev.map(f => 
-          f.id === newFeedback.id ? {...f, read: true} : f
-        ));
-      }, 5000);
-    } catch (error) {
-      toast.error('Failed to send feedback');
+    // Verify we still have a valid session before sending feedback
+    const token = Cookies.get('token');
+    if (!token) {
+      toast.error('❌ Session expired. Please log in again.');
+      window.location.href = '/login';
+      return;
     }
-  };
+
+    // First, make a quick health check to ensure our session is still valid
+    try {
+      await api.get('/auth/health');
+    } catch (healthError: any) {
+      if (healthError.response?.status === 401 || healthError.response?.status === 403) {
+        toast.error('❌ Session expired. Please log in again.');
+        Cookies.remove('token');
+        Cookies.remove('user');
+        Cookies.remove('profile');
+        window.location.href = '/login';
+        return;
+      }
+    }
+
+    // Send the feedback
+    await api.post('/coach/feedback', {
+      student_id: selectedStudent.user_id,
+      feedback_type: 'guidance',
+      feedback_text: feedbackText,
+      rating: 5
+    });
+
+    // Success - update local state
+    const newFeedback = {
+      id: Date.now(),
+      student_id: selectedStudent.user_id,
+      student_name: selectedStudent.full_name,
+      text: feedbackText,
+      sent_at: new Date().toISOString(),
+      read: false
+    };
+    
+    setSentFeedbacks([newFeedback, ...sentFeedbacks]);
+    setFeedbackText('');
+    
+    toast.success('📨 Guidance sent successfully! Student will be notified.');
+    
+    // Simulate read status after 5 seconds
+    setTimeout(() => {
+      setSentFeedbacks(prev => prev.map(f => 
+        f.id === newFeedback.id ? { ...f, read: true } : f
+      ));
+    }, 5000);
+    
+  } catch (error: any) {
+    console.error('Feedback submission error:', error);
+    
+    // Handle specific error cases
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      const errorCode = error.response?.data?.code;
+      
+      switch (errorCode) {
+        case 'TOKEN_EXPIRED':
+        case 'SESSION_EXPIRED':
+          toast.error('❌ Your session has expired. Please log in again.');
+          Cookies.remove('token');
+          Cookies.remove('user');
+          Cookies.remove('profile');
+          setTimeout(() => {
+            window.location.href = '/login';
+          }, 1000);
+          break;
+          
+        case 'ACCOUNT_INACTIVE':
+          toast.error('❌ Your account is not active. Please contact support.');
+          break;
+          
+        default:
+          toast.error('❌ Authentication failed. Please log in again.');
+          setTimeout(() => {
+            window.location.href = '/login';
+          }, 1000);
+          break;
+      }
+    } else if (error.response?.status === 500) {
+      toast.error('❌ Server error. Please try again in a moment.');
+    } else if (!error.response) {
+      toast.error('❌ Network error. Please check your connection.');
+    } else {
+      toast.error('❌ Failed to send guidance: ' + (error.response?.data?.error || 'Unknown error'));
+    }
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
 
   // Handler for when profile image is updated
   const handleProfileUpdate = (updatedUser: any) => {
@@ -849,39 +935,46 @@ export default function CoachDashboard() {
                         }}
                       />
                       <button
-                        onClick={provideFeedback}
-                        disabled={!feedbackText.trim()}
-                        style={{
-                          position: 'absolute',
-                          right: '12px',
-                          bottom: '12px',
-                          width: '40px',
-                          height: '40px',
-                          borderRadius: '50%',
-                          background: feedbackText.trim() 
-                            ? 'linear-gradient(135deg, #9333ea, #ec4899)' 
-                            : 'rgba(147, 51, 234, 0.3)',
-                          border: 'none',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          cursor: feedbackText.trim() ? 'pointer' : 'not-allowed',
-                          transition: 'all 0.3s ease',
-                          color: '#fff',
-                        }}
-                        onMouseEnter={(e) => {
-                          if (feedbackText.trim()) {
-                            e.currentTarget.style.transform = 'scale(1.1)';
-                            e.currentTarget.style.boxShadow = '0 4px 20px rgba(147, 51, 234, 0.6)';
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.transform = 'scale(1)';
-                          e.currentTarget.style.boxShadow = 'none';
-                        }}
-                      >
-                        <Send size={20} />
-                      </button>
+  onClick={provideFeedback}
+  disabled={!feedbackText.trim() || !selectedStudent || isSubmitting}
+  style={{
+    position: 'absolute',
+    right: '12px',
+    bottom: '12px',
+    width: '40px',
+    height: '40px',
+    borderRadius: '50%',
+    background: (feedbackText.trim() && selectedStudent && !isSubmitting)
+      ? 'linear-gradient(135deg, #9333ea, #ec4899)' 
+      : 'rgba(147, 51, 234, 0.3)',
+    border: 'none',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: (feedbackText.trim() && selectedStudent && !isSubmitting) ? 'pointer' : 'not-allowed',
+    transition: 'all 0.3s ease',
+    color: '#fff',
+  }}
+  onMouseEnter={(e) => {
+    if (feedbackText.trim() && selectedStudent && !isSubmitting) {
+      e.currentTarget.style.transform = 'scale(1.1)';
+      e.currentTarget.style.boxShadow = '0 4px 20px rgba(147, 51, 234, 0.6)';
+    }
+  }}
+  onMouseLeave={(e) => {
+    e.currentTarget.style.transform = 'scale(1)';
+    e.currentTarget.style.boxShadow = 'none';
+  }}
+>
+  {isSubmitting ? (
+    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+    </svg>
+  ) : (
+    <Send size={20} />
+  )}
+</button>
                     </div>
                     
                     {/* Recent Feedback Status */}
