@@ -41,3 +41,78 @@ Content-Type: application/json
   "full_name": "Coach Name",
   "field_of_interest": "Programming Skills"
 }
+
+### Admin Login
+POST http://localhost:5000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@sololeveling.com",
+  "password": "Admin@123456"
+}
+
+### Get Dashboard Stats (Replace YOUR_ADMIN_TOKEN with token from login)
+GET http://localhost:5000/api/admin/dashboard/stats
+Authorization: Bearer YOUR_ADMIN_TOKEN
+
+### Get All Users
+GET http://localhost:5000/api/admin/users?page=1&limit=10
+Authorization: Bearer YOUR_ADMIN_TOKEN
+
+### Search Users
+GET http://localhost:5000/api/admin/users?search=test&user_type=adventurer
+Authorization: Bearer YOUR_ADMIN_TOKEN
+
+### Get Specific User Details
+GET http://localhost:5000/api/admin/users/1
+Authorization: Bearer YOUR_ADMIN_TOKEN
+
+### Create New User (Admin Panel)
+POST http://localhost:5000/api/admin/users
+Authorization: Bearer YOUR_ADMIN_TOKEN
+Content-Type: application/json
+
+{
+  "email": "newuser@example.com",
+  "username": "newuser123",
+  "password": "Password123!",
+  "user_type": "adventurer",
+  "full_name": "New User",
+  "field_of_interest": "Programming Skills",
+  "commitment_level": "1_hour",
+  "experience_level": "beginner"
+}
+
+### Update User
+PUT http://localhost:5000/api/admin/users/1
+Authorization: Bearer YOUR_ADMIN_TOKEN
+Content-Type: application/json
+
+{
+  "username": "updated_username",
+  "is_active": true
+}
+
+### Toggle User Status
+PATCH http://localhost:5000/api/admin/users/1/toggle-status
+Authorization: Bearer YOUR_ADMIN_TOKEN
+
+### Delete User
+DELETE http://localhost:5000/api/admin/users/1
+Authorization: Bearer YOUR_ADMIN_TOKEN
+
+### Get All Quests
+GET http://localhost:5000/api/admin/quests?page=1&limit=10
+Authorization: Bearer YOUR_ADMIN_TOKEN
+
+### Get Admin Logs
+GET http://localhost:5000/api/admin/logs?page=1&limit=20
+Authorization: Bearer YOUR_ADMIN_TOKEN
+
+### Get Admin Logs by Action Type
+GET http://localhost:5000/api/admin/logs?action_type=DELETE_USER
+Authorization: Bearer YOUR_ADMIN_TOKEN
+
+### Get Database Statistics
+GET http://localhost:5000/api/admin/database/stats
+Authorization: Bearer YOUR_ADMIN_TOKEN

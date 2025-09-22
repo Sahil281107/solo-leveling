@@ -69,12 +69,14 @@ export default function LoginPage() {
       
       // Redirect based on user type
       setTimeout(() => {
-        if (response.user.user_type === 'coach') {
-          router.push('/coach');
-        } else {
-          router.push('/dashboard');
-        }
-      }, 1000);
+  if (response.user.user_type === 'admin') {
+    router.push('/admin');
+  } else if (response.user.user_type === 'coach') {
+    router.push('/coach');
+  } else {
+    router.push('/dashboard');
+  }
+}, 1000);
       
     } catch (error: any) {
       const errorMessage = error.response?.data?.error || 'Login failed';
@@ -454,29 +456,30 @@ export default function LoginPage() {
             </form>
 
             {/* Demo Credentials */}
-            <div style={{
-              marginTop: '32px',
-              padding: '20px',
-              background: 'rgba(147, 51, 234, 0.1)',
-              backdropFilter: 'blur(10px)',
-              borderRadius: '12px',
-              border: '1px solid rgba(147, 51, 234, 0.3)',
-            }}>
-              <p style={{ 
-                fontSize: '12px', 
-                color: '#a855f7', 
-                marginBottom: '12px',
-                fontWeight: '600',
-                textTransform: 'uppercase',
-                letterSpacing: '1px'
-              }}>
-                🎮 Demo Hunter Accounts
-              </p>
-              <div style={{ fontSize: '14px', color: '#d1d5db', lineHeight: '1.6' }}>
-                <p><strong>Adventurer:</strong> test@example.com / password123</p>
-                <p><strong>Coach:</strong> coach@example.com / password123</p>
-              </div>
-            </div>
+<div style={{
+  marginTop: '32px',
+  padding: '20px',
+  background: 'rgba(147, 51, 234, 0.1)',
+  backdropFilter: 'blur(10px)',
+  borderRadius: '12px',
+  border: '1px solid rgba(147, 51, 234, 0.3)',
+}}>
+  <p style={{ 
+    fontSize: '12px', 
+    color: '#a855f7', 
+    marginBottom: '12px',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: '1px'
+  }}>
+    🎮 Demo Hunter Accounts
+  </p>
+  <div style={{ fontSize: '14px', color: '#d1d5db', lineHeight: '1.6' }}>
+    <p><strong>Adventurer:</strong> test@example.com / password123</p>
+    <p><strong>Coach:</strong> coach@example.com / password123</p>
+    <p><strong>Admin:</strong> admin@sololeveling.com / admin123</p>
+  </div>
+</div>
 
             {/* Sign Up Link */}
             <div style={{ textAlign: 'center', marginTop: '32px' }}>

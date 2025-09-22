@@ -3,6 +3,7 @@ import authRoutes from './authRoutes';
 import userRoutes from './userRoutes';
 import questRoutes from './questRoutes';
 import coachRoutes from './coachRoutes';
+import adminRoutes from './adminRoutes';
 
 const router = Router();
 
@@ -11,6 +12,7 @@ router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
 router.use('/quests', questRoutes);
 router.use('/coach', coachRoutes);
+router.use('/admin', adminRoutes);
 
 // Health check endpoint
 router.get('/health', (req, res) => {

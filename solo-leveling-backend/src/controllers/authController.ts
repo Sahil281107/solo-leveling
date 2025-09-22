@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import pool from '../config/database';
+import prisma from '../config/prisma'; 
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const fs = require('fs').promises;
@@ -154,6 +155,84 @@ export const login = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
     
+    // ==================== HARDCODED ADMIN CHECK (ADD THIS) ====================
+// Check if this is an admin login attempt
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@sololeveling.com';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin@123456';
+
+if (email === ADMIN_EMAIL) {
+  // Admin login - verify password directly (no bcrypt for admin)
+  if (password !== ADMIN_PASSWORD) {
+    console.log('❌ Admin login failed: Invalid password');
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+
+  console.log('✅ Admin login successful');
+
+  // Generate session ID and JWT token for admin
+  const sessionId = generateSessionId();
+  const adminUserId = 9999; // Virtual admin user ID
+
+  const token = jwt.sign(
+    { 
+      user_id: adminUserId,
+      email: ADMIN_EMAIL,
+      user_type: 'admin',
+      session_id: sessionId,
+      isHardcodedAdmin: true // Special flag for admin
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+
+  // Log admin login action using Prisma
+  try {
+    await prisma.adminActionLog.create({
+      data: {
+        admin_user_id: adminUserId,
+        action_type: 'ADMIN_LOGIN',
+        action_details: {
+          login_time: new Date().toISOString(),
+          ip_address: clientIP,
+          user_agent: userAgent,
+          type: 'hardcoded_admin'
+        },
+        ip_address: clientIP,
+        user_agent: userAgent
+      }
+    });
+  } catch (logError) {
+    console.warn('Failed to log admin action:', logError);
+  }
+
+  await connection.commit();
+  connection.release();
+
+  // Return admin response
+  return res.json({
+    message: 'Admin login successful',
+    token,
+    user: {
+      user_id: adminUserId,
+      email: ADMIN_EMAIL,
+      username: 'SystemAdmin',
+      user_type: 'admin',
+      profile_photo_url: null,
+      is_active: true
+    },
+    profile: {
+      full_name: 'System Administrator',
+      department: 'System Administration',
+      access_level: 'SUPER_ADMIN'
+    },
+    session: {
+      session_id: sessionId,
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+    }
+  });
+}
+// ==================== END HARDCODED ADMIN CHECK ====================
+
     // Get user with additional fields for security
     const [users]: any = await connection.execute(
       'SELECT user_id, email, username, password_hash, user_type, profile_photo_url, is_active, email_verified FROM users WHERE email = ?',
@@ -235,20 +314,61 @@ export const login = async (req: Request, res: Response) => {
     }
     
     // Get user profile
-    let profile = null;
-    if (user.user_type === 'adventurer') {
-      const [profiles]: any = await connection.execute(
-        'SELECT * FROM adventurer_profiles WHERE user_id = ?',
-        [user.user_id]
-      );
-      profile = profiles[0];
-    } else {
-      const [profiles]: any = await connection.execute(
-        'SELECT * FROM coach_profiles WHERE user_id = ?',
-        [user.user_id]
-      );
-      profile = profiles[0];
+   // Get user profile based on user type
+let profile = null;
+if (user.user_type === 'adventurer') {
+  // Keep existing MySQL connection for adventurer
+  const [profiles]: any = await connection.execute(
+    'SELECT * FROM adventurer_profiles WHERE user_id = ?',
+    [user.user_id]
+  );
+  profile = profiles[0];
+} else if (user.user_type === 'coach') {
+  // Keep existing MySQL connection for coach
+  const [profiles]: any = await connection.execute(
+    'SELECT * FROM coach_profiles WHERE user_id = ?',
+    [user.user_id]
+  );
+  profile = profiles[0];
+} else if (user.user_type === 'admin') {
+  // USE PRISMA ONLY FOR ADMIN
+  try {
+    const adminProfile = await prisma.adminProfile.findUnique({
+      where: { user_id: user.user_id }
+    });
+    
+    if (adminProfile) {
+      // Update admin's last action using Prisma
+      await prisma.adminProfile.update({
+        where: { user_id: user.user_id },
+        data: {
+          last_action: 'LOGIN',
+          last_action_date: new Date()
+        }
+      });
+      
+      // Log admin login action using Prisma
+      await prisma.adminActionLog.create({
+        data: {
+          admin_user_id: user.user_id,
+          action_type: 'ADMIN_LOGIN',
+          action_details: {
+            login_time: new Date().toISOString(),
+            ip_address: clientIP,
+            user_agent: userAgent
+          },
+          ip_address: clientIP,
+          user_agent: userAgent
+        }
+      });
+      
+      profile = adminProfile;
     }
+  } catch (prismaError) {
+    console.error('Prisma admin profile error:', prismaError);
+    // If Prisma fails, you can fallback to regular query or handle the error
+  }
+}
     
     // Update last login manually if triggers don't work
     try {

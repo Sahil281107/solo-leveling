@@ -1,4 +1,575 @@
 solo-leveling-backend/
+prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  user_id                                                                        Int                           @id @default(autoincrement())
+  email                                                                          String                        @unique(map: "email") @db.VarChar(255)
+  username                                                                       String                        @unique(map: "username") @db.VarChar(100)
+  password_hash                                                                  String                        @db.VarChar(255)
+  user_type                                                                      UserType
+  profile_photo_url                                                              String?                       @db.VarChar(500)
+  created_at                                                                     DateTime?                     @default(now()) @db.Timestamp(0)
+  last_login                                                                     DateTime?                     @db.Timestamp(0)
+  is_active                                                                      Boolean?                      @default(true)
+  email_verified                                                                 Boolean?                      @default(false)
+  verification_token                                                             String?                       @db.VarChar(255)
+  reset_password_token                                                           String?                       @db.VarChar(255)
+  reset_password_expires                                                         DateTime?                     @db.Timestamp(0)
+  activity_logs                                                                  activity_logs[]
+  adminProfile                                                                   AdminProfile?
+  adventurerProfile                                                              AdventurerProfile?
+  coach_feedback_coach_feedback_coach_user_idTousers                             coach_feedback[]              @relation("coach_feedback_coach_user_idTousers")
+  coach_feedback_coach_feedback_student_user_idTousers                           coach_feedback[]              @relation("coach_feedback_student_user_idTousers")
+  coachProfile                                                                   CoachProfile?
+  coach_student_relationships_coach_student_relationships_coach_user_idTousers   coach_student_relationships[] @relation("coach_student_relationships_coach_user_idTousers")
+  coach_student_relationships_coach_student_relationships_student_user_idTousers coach_student_relationships[] @relation("coach_student_relationships_student_user_idTousers")
+  daily_checkins                                                                 daily_checkins[]
+  level_progression                                                              level_progression[]
+  media_uploads                                                                  media_uploads[]
+  notifications                                                                  notifications[]
+  quest_completion_history_quest_completion_history_user_idTousers               quest_completion_history[]    @relation("quest_completion_history_user_idTousers")
+  quest_completion_history_quest_completion_history_coach_user_idTousers         quest_completion_history[]    @relation("quest_completion_history_coach_user_idTousers")
+  user_achievements                                                              user_achievements[]
+  user_active_quests                                                             user_active_quests[]
+  user_custom_quests                                                             user_custom_quests[]
+  user_sessions                                                                  user_sessions[]
+  user_stats                                                                     user_stats[]
+
+  @@index([email], map: "idx_email")
+  @@index([user_type], map: "idx_user_type")
+  @@index([username], map: "idx_username")
+  @@map("users")
+}
+
+model AdminProfile {
+  admin_profile_id Int               @id @default(autoincrement())
+  user_id          Int               @unique(map: "user_id")
+  full_name        String            @db.VarChar(255)
+  department       String?           @default("System Administration") @db.VarChar(100)
+  access_level     AdminAccessLevel? @default(MODERATOR)
+  permissions      Json?
+  last_action      String?           @db.VarChar(255)
+  last_action_date DateTime?         @db.Timestamp(0)
+  created_at       DateTime?         @default(now()) @db.Timestamp(0)
+  updated_at       DateTime?         @default(now()) @updatedAt @db.Timestamp(0)
+  user             User              @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "admin_profiles_ibfk_1")
+
+  @@index([user_id], map: "idx_user_id")
+  @@map("admin_profiles")
+}
+
+model AdventurerProfile {
+  profile_id               Int             @id @default(autoincrement())
+  user_id                  Int             @unique(map: "user_id")
+  full_name                String          @db.VarChar(255)
+  field_of_interest        String          @db.VarChar(100)
+  custom_goal              String?         @db.Text
+  commitment_level         CommitmentLevel
+  experience_level         ExperienceLevel
+  current_level            Int?            @default(1)
+  total_exp                Int?            @default(0)
+  current_exp              Int?            @default(0)
+  exp_to_next_level        Int?            @default(100)
+  streak_days              Int?            @default(0)
+  longest_streak           Int?            @default(0)
+  last_activity_date       DateTime?       @db.Date
+  title                    String?         @default("Novice Adventurer") @db.VarChar(255)
+  timezone                 String?         @default("UTC") @db.VarChar(50)
+  notification_preferences Json?
+  created_at               DateTime?       @default(now()) @db.Timestamp(0)
+  updated_at               DateTime?       @default(now()) @updatedAt @db.Timestamp(0)
+  user                     User            @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "adventurer_profiles_ibfk_1")
+
+  @@index([streak_days, last_activity_date], map: "idx_adventurer_profiles_streak")
+  @@index([field_of_interest], map: "idx_field_of_interest")
+  @@index([current_level], map: "idx_level")
+  @@map("adventurer_profiles")
+}
+
+model CoachProfile {
+  coach_profile_id       Int                 @id @default(autoincrement())
+  user_id                Int                 @unique(map: "user_id")
+  full_name              String              @db.VarChar(255)
+  specialization         String?             @db.VarChar(100)
+  bio                    String?             @db.Text
+  credentials            String?             @db.Text
+  years_experience       Int?
+  max_students           Int?                @default(10)
+  current_students       Int?                @default(0)
+  verification_status    VerificationStatus? @default(pending)
+  created_at             DateTime?           @default(now()) @db.Timestamp(0)
+  updated_at             DateTime?           @default(now()) @updatedAt @db.Timestamp(0)
+  total_students_coached Int?                @default(0)
+  success_stories        Int?                @default(0)
+  certification          String?             @db.VarChar(255)
+  user                   User                @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "coach_profiles_ibfk_1")
+
+  @@index([specialization], map: "idx_specialization")
+  @@map("coach_profiles")
+}
+
+model AdminActionLog {
+  log_id         Int       @id @default(autoincrement())
+  admin_user_id  Int
+  action_type    String    @db.VarChar(100)
+  target_type    String?   @db.VarChar(50)
+  target_id      Int?
+  action_details Json?
+  ip_address     String?   @db.VarChar(45)
+  user_agent     String?   @db.Text
+  created_at     DateTime? @default(now()) @db.Timestamp(0)
+
+  @@index([action_type], map: "idx_action_type")
+  @@index([admin_user_id], map: "idx_admin_user")
+  @@index([created_at], map: "idx_created")
+  @@map("admin_action_logs")
+}
+
+model achievements {
+  achievement_id          Int                           @id @default(autoincrement())
+  achievement_name        String                        @db.VarChar(255)
+  achievement_description String?                       @db.Text
+  achievement_icon        String?                       @db.VarChar(10)
+  achievement_type        achievements_achievement_type
+  requirement_value       Int?
+  xp_reward               Int?                          @default(0)
+  is_active               Boolean?                      @default(true)
+  user_achievements       user_achievements[]
+}
+
+model activity_logs {
+  log_id           Int                         @id @default(autoincrement())
+  user_id          Int
+  activity_type    activity_logs_activity_type
+  activity_details Json?
+  ip_address       String?                     @db.VarChar(45)
+  user_agent       String?                     @db.Text
+  created_at       DateTime?                   @default(now()) @db.Timestamp(0)
+  users            User                        @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "activity_logs_ibfk_1")
+
+  @@index([ip_address, created_at], map: "idx_activity_logs_ip")
+  @@index([activity_type, created_at, user_id], map: "idx_activity_logs_login")
+  @@index([created_at], map: "idx_created")
+  @@index([activity_type], map: "idx_type")
+  @@index([user_id], map: "idx_user")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model coach_feedback {
+  feedback_id                                 Int                          @id @default(autoincrement())
+  coach_user_id                               Int
+  student_user_id                             Int
+  feedback_type                               coach_feedback_feedback_type
+  related_quest_id                            Int?
+  feedback_text                               String                       @db.Text
+  rating                                      Int?
+  is_read                                     Boolean?                     @default(false)
+  created_at                                  DateTime?                    @default(now()) @db.Timestamp(0)
+  users_coach_feedback_coach_user_idTousers   User                         @relation("coach_feedback_coach_user_idTousers", fields: [coach_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "coach_feedback_ibfk_1")
+  users_coach_feedback_student_user_idTousers User                         @relation("coach_feedback_student_user_idTousers", fields: [student_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "coach_feedback_ibfk_2")
+  quest_completion_history                    quest_completion_history?    @relation(fields: [related_quest_id], references: [completion_id], onUpdate: NoAction, map: "coach_feedback_ibfk_3")
+
+  @@index([coach_user_id], map: "idx_coach")
+  @@index([created_at], map: "idx_created")
+  @@index([student_user_id], map: "idx_student")
+  @@index([related_quest_id], map: "related_quest_id")
+}
+
+model coach_student_relationships {
+  relationship_id                                          Int                                            @id @default(autoincrement())
+  coach_user_id                                            Int
+  student_user_id                                          Int
+  status                                                   coach_student_relationships_status?            @default(pending)
+  relationship_type                                        coach_student_relationships_relationship_type? @default(primary)
+  started_at                                               DateTime?                                      @default(now()) @db.Timestamp(0)
+  ended_at                                                 DateTime?                                      @db.Timestamp(0)
+  notes                                                    String?                                        @db.Text
+  created_at                                               DateTime?                                      @default(now()) @db.Timestamp(0)
+  updated_at                                               DateTime?                                      @default(now()) @db.Timestamp(0)
+  users_coach_student_relationships_coach_user_idTousers   User                                           @relation("coach_student_relationships_coach_user_idTousers", fields: [coach_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "coach_student_relationships_ibfk_1")
+  users_coach_student_relationships_student_user_idTousers User                                           @relation("coach_student_relationships_student_user_idTousers", fields: [student_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "coach_student_relationships_ibfk_2")
+
+  @@unique([coach_user_id, student_user_id], map: "unique_coach_student")
+  @@index([coach_user_id], map: "idx_coach")
+  @@index([status], map: "idx_status")
+  @@index([student_user_id], map: "idx_student")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model daily_checkins {
+  checkin_id       Int       @id @default(autoincrement())
+  user_id          Int
+  checkin_date     DateTime  @db.Date
+  quests_completed Int?      @default(0)
+  total_xp_earned  Int?      @default(0)
+  mood_rating      Int?
+  energy_level     Int?
+  notes            String?   @db.Text
+  created_at       DateTime? @default(now()) @db.Timestamp(0)
+  users            User      @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "daily_checkins_ibfk_1")
+
+  @@unique([user_id, checkin_date], map: "unique_user_date")
+  @@index([user_id, checkin_date(sort: Desc)], map: "idx_checkin_streak")
+  @@index([user_id, checkin_date], map: "idx_daily_checkin_user_date")
+  @@index([user_id, checkin_date], map: "idx_daily_checkins_user_date")
+  @@index([checkin_date], map: "idx_date")
+  @@index([user_id], map: "idx_user")
+}
+
+model fields_of_interest {
+  field_id          Int               @id @default(autoincrement())
+  field_name        String            @unique(map: "field_name") @db.VarChar(100)
+  field_icon        String?           @db.VarChar(10)
+  field_description String?           @db.Text
+  is_active         Boolean?          @default(true)
+  created_at        DateTime?         @default(now()) @db.Timestamp(0)
+  quest_templates   quest_templates[]
+  stats_template    stats_template[]
+}
+
+model level_progression {
+  progression_id       Int       @id @default(autoincrement())
+  user_id              Int
+  old_level            Int
+  new_level            Int
+  total_exp_at_levelup Int
+  achieved_at          DateTime? @default(now()) @db.Timestamp(0)
+  milestone_name       String?   @db.VarChar(255)
+  users                User      @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "level_progression_ibfk_1")
+
+  @@index([achieved_at], map: "idx_achieved_at")
+  @@index([user_id], map: "idx_user")
+}
+
+model media_uploads {
+  media_id    Int                      @id @default(autoincrement())
+  user_id     Int
+  media_type  media_uploads_media_type
+  file_url    String                   @db.VarChar(500)
+  file_name   String?                  @db.VarChar(255)
+  file_size   Int?
+  mime_type   String?                  @db.VarChar(100)
+  uploaded_at DateTime?                @default(now()) @db.Timestamp(0)
+  users       User                     @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "media_uploads_ibfk_1")
+
+  @@index([media_type], map: "idx_type")
+  @@index([user_id], map: "idx_user")
+}
+
+model notifications {
+  notification_id   Int                             @id @default(autoincrement())
+  user_id           Int
+  notification_type notifications_notification_type
+  title             String                          @db.VarChar(255)
+  message           String                          @db.Text
+  is_read           Boolean?                        @default(false)
+  action_url        String?                         @db.VarChar(500)
+  created_at        DateTime?                       @default(now()) @db.Timestamp(0)
+  expires_at        DateTime?                       @db.Timestamp(0)
+  users             User                            @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "notifications_ibfk_1")
+
+  @@index([created_at], map: "idx_created")
+  @@index([user_id, is_read], map: "idx_user_unread")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model quest_completion_history {
+  completion_id                                       Int                                           @id @default(autoincrement())
+  user_id                                             Int
+  quest_template_id                                   Int?
+  quest_type                                          String                                        @db.VarChar(20)
+  completed_at                                        DateTime?                                     @default(now()) @db.Timestamp(0)
+  xp_earned                                           Int
+  time_to_complete                                    Int?
+  difficulty_rating                                   Int?
+  notes                                               String?                                       @db.Text
+  verified_by_coach                                   Boolean?                                      @default(false)
+  coach_user_id                                       Int?
+  verification_method                                 quest_completion_history_verification_method? @default(manual)
+  proof_url                                           String?                                       @db.VarChar(500)
+  coach_feedback                                      coach_feedback[]
+  users_quest_completion_history_user_idTousers       User                                          @relation("quest_completion_history_user_idTousers", fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "quest_completion_history_ibfk_1")
+  quest_templates                                     quest_templates?                              @relation(fields: [quest_template_id], references: [quest_template_id], onUpdate: NoAction, map: "quest_completion_history_ibfk_2")
+  users_quest_completion_history_coach_user_idTousers User?                                         @relation("quest_completion_history_coach_user_idTousers", fields: [coach_user_id], references: [user_id], onUpdate: NoAction, map: "quest_completion_history_ibfk_3")
+
+  @@index([coach_user_id, verified_by_coach], map: "idx_coach_verification")
+  @@index([completed_at], map: "idx_completed_at")
+  @@index([user_id, completed_at], map: "idx_quest_completion_date")
+  @@index([user_id, completed_at], map: "idx_quest_completion_user_date")
+  @@index([user_id], map: "idx_user")
+  @@index([quest_template_id], map: "quest_template_id")
+}
+
+model quest_templates {
+  quest_template_id        Int                        @id @default(autoincrement())
+  field_name               String                     @db.VarChar(100)
+  quest_type               quest_templates_quest_type
+  quest_title              String                     @db.VarChar(255)
+  quest_description        String?                    @db.Text
+  base_xp                  Int
+  difficulty               quest_templates_difficulty
+  related_stat             String?                    @db.VarChar(100)
+  stat_increase            Int?                       @default(1)
+  is_active                Boolean?                   @default(true)
+  created_at               DateTime?                  @default(now()) @db.Timestamp(0)
+  quest_completion_history quest_completion_history[]
+  fields_of_interest       fields_of_interest         @relation(fields: [field_name], references: [field_name], onDelete: Cascade, onUpdate: NoAction, map: "quest_templates_ibfk_1")
+  user_active_quests       user_active_quests[]
+
+  @@index([field_name, quest_type], map: "idx_field_type")
+  @@index([related_stat], map: "idx_related_stat")
+}
+
+model stats_template {
+  stat_template_id   Int                @id @default(autoincrement())
+  field_name         String             @db.VarChar(100)
+  stat_name          String             @db.VarChar(100)
+  stat_icon          String?            @db.VarChar(10)
+  max_value          Int?               @default(100)
+  initial_value      Int?               @default(10)
+  stat_order         Int?               @default(0)
+  fields_of_interest fields_of_interest @relation(fields: [field_name], references: [field_name], onDelete: Cascade, onUpdate: NoAction, map: "stats_template_ibfk_1")
+
+  @@unique([field_name, stat_name], map: "unique_field_stat")
+  @@index([field_name], map: "idx_field")
+}
+
+model system_settings {
+  setting_id    Int                           @id @default(autoincrement())
+  setting_key   String                        @unique(map: "setting_key") @db.VarChar(100)
+  setting_value String?                       @db.Text
+  setting_type  system_settings_setting_type? @default(string)
+  description   String?                       @db.Text
+  updated_at    DateTime?                     @default(now()) @db.Timestamp(0)
+}
+
+model user_achievements {
+  user_achievement_id Int          @id @default(autoincrement())
+  user_id             Int
+  achievement_id      Int
+  earned_at           DateTime?    @default(now()) @db.Timestamp(0)
+  users               User         @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "user_achievements_ibfk_1")
+  achievements        achievements @relation(fields: [achievement_id], references: [achievement_id], onDelete: Cascade, onUpdate: NoAction, map: "user_achievements_ibfk_2")
+
+  @@unique([user_id, achievement_id], map: "unique_user_achievement")
+  @@index([achievement_id], map: "achievement_id")
+  @@index([user_id], map: "idx_user")
+}
+
+model user_active_quests {
+  active_quest_id   Int                           @id @default(autoincrement())
+  user_id           Int
+  quest_template_id Int
+  quest_type        user_active_quests_quest_type
+  assigned_date     DateTime                      @db.Date
+  expires_at        DateTime                      @db.Timestamp(0)
+  is_completed      Boolean?                      @default(false)
+  completed_at      DateTime?                     @db.Timestamp(0)
+  xp_earned         Int?
+  created_at        DateTime?                     @default(now()) @db.Timestamp(0)
+  users             User                          @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "user_active_quests_ibfk_1")
+  quest_templates   quest_templates               @relation(fields: [quest_template_id], references: [quest_template_id], onDelete: Cascade, onUpdate: NoAction, map: "user_active_quests_ibfk_2")
+
+  @@index([user_id, is_completed], map: "idx_active_quests_user")
+  @@index([expires_at], map: "idx_expires")
+  @@index([user_id, quest_type, expires_at], map: "idx_quest_user_type_expires")
+  @@index([user_id, assigned_date], map: "idx_user_date")
+  @@index([user_id, quest_type], map: "idx_user_type")
+  @@index([quest_template_id], map: "quest_template_id")
+}
+
+model user_custom_quests {
+  custom_quest_id   Int                           @id @default(autoincrement())
+  user_id           Int
+  quest_title       String                        @db.VarChar(255)
+  quest_description String?                       @db.Text
+  target_xp         Int                           @default(25)
+  difficulty        user_custom_quests_difficulty @default(medium)
+  related_stat      String?                       @db.VarChar(100)
+  is_active         Boolean?                      @default(true)
+  created_at        DateTime?                     @default(now()) @db.Timestamp(0)
+  updated_at        DateTime?                     @default(now()) @db.Timestamp(0)
+  users             User                          @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "user_custom_quests_ibfk_1")
+
+  @@index([user_id, is_active], map: "idx_user_active")
+}
+
+model user_sessions {
+  session_id    String                      @id @db.VarChar(255)
+  user_id       Int
+  refresh_token String?                     @db.VarChar(500)
+  expires_at    DateTime                    @db.Timestamp(0)
+  created_at    DateTime?                   @default(now()) @db.Timestamp(0)
+  last_activity DateTime?                   @default(now()) @db.Timestamp(0)
+  ip_address    String?                     @db.VarChar(45)
+  user_agent    String?                     @db.Text
+  is_active     Boolean?                    @default(true)
+  login_method  user_sessions_login_method? @default(web)
+  device_info   String?                     @db.Text
+  users         User                        @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "user_sessions_ibfk_1")
+
+  @@index([expires_at], map: "idx_expires")
+  @@index([user_id], map: "idx_user")
+  @@index([user_id, is_active, expires_at], map: "idx_user_sessions_active")
+  @@index([expires_at], map: "idx_user_sessions_expires")
+}
+
+model user_stats {
+  user_stat_id  Int       @id @default(autoincrement())
+  user_id       Int
+  stat_name     String    @db.VarChar(100)
+  stat_icon     String?   @db.VarChar(10)
+  current_value Int?      @default(10)
+  max_value     Int?      @default(100)
+  last_updated  DateTime? @default(now()) @db.Timestamp(0)
+  users         User      @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "user_stats_ibfk_1")
+
+  @@unique([user_id, stat_name], map: "unique_user_stat")
+  @@index([user_id], map: "idx_user")
+  @@index([user_id], map: "idx_user_stats_user")
+}
+
+enum UserType {
+  adventurer
+  coach
+  admin
+}
+
+enum AdminAccessLevel {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+}
+
+enum CommitmentLevel {
+  thirty_minutes   @map("30_minutes")
+  one_hour         @map("1_hour")
+  two_hours        @map("2_hours")
+  three_plus_hours @map("3_plus_hours")
+}
+
+enum ExperienceLevel {
+  beginner
+  some_experience
+  intermediate
+  advanced
+}
+
+enum VerificationStatus {
+  pending
+  verified
+  rejected
+}
+
+enum activity_logs_activity_type {
+  login
+  quest_complete
+  level_up
+  stat_increase
+  achievement_earned
+  profile_update
+}
+
+enum media_uploads_media_type {
+  profile_photo
+  quest_proof
+  achievement_badge
+}
+
+enum notifications_notification_type {
+  quest_reminder
+  level_up
+  achievement
+  coach_feedback
+  streak_warning
+  system
+}
+
+enum quest_templates_quest_type {
+  daily
+  weekly
+  special
+  main
+}
+
+enum coach_feedback_feedback_type {
+  daily
+  weekly
+  quest
+  general
+  guidance
+}
+
+enum coach_student_relationships_status {
+  pending
+  active
+  terminated
+}
+
+enum system_settings_setting_type {
+  string
+  number
+  boolean
+  json
+}
+
+enum user_active_quests_quest_type {
+  daily
+  weekly
+  special
+  main
+}
+
+enum achievements_achievement_type {
+  streak
+  level
+  quest
+  stat
+  special
+}
+
+enum coach_student_relationships_relationship_type {
+  primary
+  secondary
+  observer
+}
+
+enum user_custom_quests_difficulty {
+  easy
+  medium
+  hard
+}
+
+enum quest_templates_difficulty {
+  easy
+  medium
+  hard
+}
+
+enum user_sessions_login_method {
+  web
+  mobile
+  api
+}
+
+enum quest_completion_history_verification_method {
+  manual
+  photo
+  video
+  gps
+  app_integration
+}
+
+
+
 
 src/config/database.ts
 const mysql = require('mysql2/promise');
@@ -31,9 +602,599 @@ export default pool;
 
 
 
+
+src/config/prisma.ts
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient({
+  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+});
+
+export default prisma;
+
+
+
+
+src/controller/adminController.ts
+import { Request, Response } from 'express';
+import prisma from '../config/prisma';
+import  pool from '../config/database'; // For non-Prisma operations if needed
+
+// Get dashboard statistics
+export const getDashboardStats = async (req: Request, res: Response) => {
+  try {
+    const [
+      totalUsers,
+      adventurerCount,
+      coachCount,
+      adminCount,
+      activeUsers,
+      recentRegistrations
+    ] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { user_type: 'adventurer' } }),
+      prisma.user.count({ where: { user_type: 'coach' } }),
+      prisma.user.count({ where: { user_type: 'admin' } }),
+      prisma.user.count({ where: { is_active: true } }),
+      prisma.user.findMany({
+        where: {
+          created_at: {
+            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // Last 7 days
+          }
+        },
+        select: {
+          user_id: true,
+          username: true,
+          email: true,
+          user_type: true,
+          created_at: true
+        },
+        orderBy: { created_at: 'desc' },
+        take: 10
+      })
+    ]);
+
+    // Try to get quest count, but don't fail if table doesn't exist
+    let totalQuests = 0;
+    try {
+      const questResult = await prisma.$queryRaw`SELECT COUNT(*) as count FROM active_quests`;
+      totalQuests = (questResult as any)[0]?.count || 0;
+    } catch (questError) {
+      console.warn('⚠️ active_quests table not found, returning 0 quests');
+      totalQuests = 0;
+    }
+
+    res.json({
+      stats: {
+        totalUsers,
+        usersByType: {
+          adventurers: adventurerCount,
+          coaches: coachCount,
+          admins: adminCount
+        },
+        activeUsers,
+        totalQuests
+      },
+      recentRegistrations
+    });
+  } catch (error) {
+    console.error('Dashboard stats error:', error);
+    res.status(500).json({ error: 'Failed to fetch dashboard statistics' });
+  }
+};
+
+// Get all users with pagination and filters
+export const getAllUsers = async (req: Request, res: Response) => {
+  try {
+    const { 
+      page = 1, 
+      limit = 10, 
+      user_type, 
+      search,
+      sort_by = 'created_at',
+      order = 'desc' 
+    } = req.query;
+
+    const skip = (Number(page) - 1) * Number(limit);
+    
+    const where: any = {};
+    
+    if (user_type && user_type !== 'all') {
+      where.user_type = user_type;
+    }
+    
+    if (search) {
+      where.OR = [
+        { username: { contains: String(search) } },
+        { email: { contains: String(search) } }
+      ];
+    }
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        skip,
+        take: Number(limit),
+        orderBy: { [String(sort_by)]: order },
+        select: {
+          user_id: true,
+          email: true,
+          username: true,
+          user_type: true,
+          profile_photo_url: true,
+          created_at: true,
+          last_login: true,
+          is_active: true,
+          email_verified: true,
+          adventurerProfile: {
+            select: {
+              full_name: true,
+              current_level: true,
+              total_exp: true,
+              field_of_interest: true
+            }
+          },
+          coachProfile: {
+            select: {
+              full_name: true,
+              specialization: true,
+              current_students: true
+            }
+          },
+          adminProfile: {
+            select: {
+              full_name: true,
+              department: true,
+              access_level: true
+            }
+          }
+        }
+      }),
+      prisma.user.count({ where })
+    ]);
+
+    // Log admin action
+    await logAdminAction(
+      (req as any).user.user_id,
+      'VIEW_USERS',
+      null,
+      null,
+      { filters: { user_type, search }, page },
+      req
+    );
+
+    res.json({
+      users,
+      pagination: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        pages: Math.ceil(total / Number(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Get users error:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+};
+
+// Get specific user details
+export const getUserDetails = async (req: Request, res: Response) => {
+  try {
+    const { user_id } = req.params;
+
+    const user = await prisma.user.findUnique({
+      where: { user_id: Number(user_id) },
+      include: {
+        adventurerProfile: true,
+        coachProfile: true,
+        adminProfile: true
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Get additional stats using raw queries for tables not in Prisma schema
+    const additionalStats = await prisma.$queryRaw`
+      SELECT 
+        (SELECT COUNT(*) FROM quest_completion_history WHERE user_id = ${Number(user_id)}) as completed_quests,
+        (SELECT COUNT(*) FROM achievements_earned WHERE user_id = ${Number(user_id)}) as achievements,
+        (SELECT COUNT(*) FROM daily_checkins WHERE user_id = ${Number(user_id)}) as checkins
+    `;
+
+    res.json({
+      user,
+      stats: additionalStats[0]
+    });
+  } catch (error) {
+    console.error('Get user details error:', error);
+    res.status(500).json({ error: 'Failed to fetch user details' });
+  }
+};
+
+// Delete user
+export const deleteUser = async (req: Request, res: Response) => {
+  try {
+    const { user_id } = req.params;
+    const adminUser = (req as any).user;
+
+    // Get user info before deletion
+    const userToDelete = await prisma.user.findUnique({
+      where: { user_id: Number(user_id) },
+      select: { username: true, email: true, user_type: true }
+    });
+
+    if (!userToDelete) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Prevent deleting super admins
+    if (userToDelete.user_type === 'admin') {
+      const targetAdmin = await prisma.adminProfile.findUnique({
+        where: { user_id: Number(user_id) }
+      });
+      
+      if (targetAdmin?.access_level === 'SUPER_ADMIN') {
+        return res.status(403).json({ error: 'Cannot delete super admin' });
+      }
+    }
+
+    // Delete user (cascades to profiles)
+    await prisma.user.delete({
+      where: { user_id: Number(user_id) }
+    });
+
+    // Log admin action
+    await logAdminAction(
+      adminUser.user_id,
+      'DELETE_USER',
+      'user',
+      Number(user_id),
+      { deletedUser: userToDelete },
+      req
+    );
+
+    res.json({ 
+      message: 'User deleted successfully',
+      deletedUser: userToDelete
+    });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+};
+
+// Toggle user status
+export const toggleUserStatus = async (req: Request, res: Response) => {
+  try {
+    const { user_id } = req.params;
+    const adminUser = (req as any).user;
+
+    const user = await prisma.user.findUnique({
+      where: { user_id: Number(user_id) }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { user_id: Number(user_id) },
+      data: { is_active: !user.is_active }
+    });
+
+    // Log admin action
+    await logAdminAction(
+      adminUser.user_id,
+      user.is_active ? 'DEACTIVATE_USER' : 'ACTIVATE_USER',
+      'user',
+      Number(user_id),
+      { newStatus: updatedUser.is_active },
+      req
+    );
+
+    res.json({
+      message: `User ${updatedUser.is_active ? 'activated' : 'deactivated'} successfully`,
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error('Toggle user status error:', error);
+    res.status(500).json({ error: 'Failed to update user status' });
+  }
+};
+
+// Get admin activity logs
+export const getAdminLogs = async (req: Request, res: Response) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const [logs, total] = await Promise.all([
+      prisma.adminActionLog.findMany({
+        skip,
+        take: Number(limit),
+        orderBy: { created_at: 'desc' }
+      }),
+      prisma.adminActionLog.count()
+    ]);
+
+    // Get admin usernames
+    const adminIds = [...new Set(logs.map(log => log.admin_user_id))];
+    const admins = await prisma.user.findMany({
+      where: { user_id: { in: adminIds } },
+      select: { user_id: true, username: true }
+    });
+
+    const adminMap = new Map(admins.map(a => [a.user_id, a.username]));
+
+    const logsWithAdminNames = logs.map(log => ({
+      ...log,
+      admin_username: adminMap.get(log.admin_user_id) || 'Unknown'
+    }));
+
+    res.json({
+      logs: logsWithAdminNames,
+      pagination: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        pages: Math.ceil(total / Number(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Get admin logs error:', error);
+    res.status(500).json({ error: 'Failed to fetch admin logs' });
+  }
+};
+
+
+// Create new user from admin panel
+export const createUser = async (req: Request, res: Response) => {
+  try {
+    const { email, username, password, user_type, full_name, ...profileData } = req.body;
+    const adminUser = (req as any).user;
+
+    // Validate required fields
+    if (!email || !username || !password || !user_type || !full_name) {
+      return res.status(400).json({ 
+        error: 'Missing required fields: email, username, password, user_type, full_name' 
+      });
+    }
+
+    // Check if user exists
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email },
+          { username }
+        ]
+      }
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ 
+        error: 'User with this email or username already exists' 
+      });
+    }
+
+    // Hash password
+    const bcrypt = require('bcrypt');
+    const password_hash = await bcrypt.hash(password, 10);
+
+    // Create user with profile in a transaction
+    const newUser = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email,
+          username,
+          password_hash,
+          user_type: user_type as any,
+          is_active: true
+        }
+      });
+
+      // Create appropriate profile
+      if (user_type === 'adventurer') {
+        await tx.adventurerProfile.create({
+          data: {
+            user_id: user.user_id,
+            full_name,
+            field_of_interest: profileData.field_of_interest || 'General',
+            commitment_level: profileData.commitment_level || 'one_hour',
+            experience_level: profileData.experience_level || 'beginner',
+          
+          }
+        });
+      } else if (user_type === 'coach') {
+        await tx.coachProfile.create({
+          data: {
+            user_id: user.user_id,
+            full_name,
+            specialization: profileData.field_of_interest || 'General',
+            verification_status: 'pending'
+          }
+        });
+      }
+
+      return user;
+    });
+
+    // Log admin action
+    await logAdminAction(
+      adminUser.user_id,
+      'CREATE_USER',
+      'user',
+      newUser.user_id,
+      { createdUser: { email, username, user_type } },
+      req
+    );
+
+    res.status(201).json({
+      message: 'User created successfully',
+      user: newUser
+    });
+  } catch (error) {
+    console.error('Create user error:', error);
+    res.status(500).json({ error: 'Failed to create user' });
+  }
+};
+
+// Update user
+export const updateUser = async (req: Request, res: Response) => {
+  try {
+    const { user_id } = req.params;
+    const { email, username, is_active, ...updateData } = req.body;
+    const adminUser = (req as any).user;
+
+    const updates: any = {};
+    
+    if (email !== undefined) updates.email = email;
+    if (username !== undefined) updates.username = username;
+    if (is_active !== undefined) updates.is_active = is_active;
+
+    const updatedUser = await prisma.user.update({
+      where: { user_id: Number(user_id) },
+      data: updates
+    });
+
+    // Log admin action
+    await logAdminAction(
+      adminUser.user_id,
+      'UPDATE_USER',
+      'user',
+      Number(user_id),
+      { updates },
+      req
+    );
+
+    res.json({
+      message: 'User updated successfully',
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error('Update user error:', error);
+    res.status(500).json({ error: 'Failed to update user' });
+  }
+};
+
+// Get all quests
+export const getAllQuests = async (req: Request, res: Response) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const quests = await prisma.$queryRaw`
+      SELECT * FROM active_quests 
+      ORDER BY created_at DESC 
+      LIMIT ${Number(limit)} OFFSET ${skip}
+    `;
+
+    const totalResult = await prisma.$queryRaw`
+      SELECT COUNT(*) as count FROM active_quests
+    `;
+    const total = (totalResult as any)[0].count;
+
+    res.json({
+      quests,
+      pagination: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        pages: Math.ceil(total / Number(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Get quests error:', error);
+    res.status(500).json({ error: 'Failed to fetch quests' });
+  }
+};
+
+// Get database statistics
+export const getDatabaseStats = async (req: Request, res: Response) => {
+  try {
+    const tables = [
+      'users', 
+      'adventurer_profiles', 
+      'coach_profiles',
+      'admin_profiles',
+      'active_quests', 
+      'quest_completion_history', 
+      'achievements_earned', 
+      'user_achievements',
+      'daily_checkins', 
+      'activity_logs',
+      'admin_action_logs'
+    ];
+
+    const stats = await Promise.all(
+      tables.map(async (table) => {
+        try {
+          const result = await prisma.$queryRawUnsafe(`SELECT COUNT(*) as count FROM ${table}`);
+          return { table, count: (result as any)[0].count };
+        } catch {
+          return { table, count: 0, error: 'Table not found' };
+        }
+      })
+    );
+
+    res.json({ tableStats: stats });
+  } catch (error) {
+    console.error('Get database stats error:', error);
+    res.status(500).json({ error: 'Failed to fetch database statistics' });
+  }
+};
+
+// Helper function to log admin actions
+async function logAdminAction(
+  admin_user_id: number,
+  action_type: string,
+  target_type: string | null,
+  target_id: number | null,
+  details: any,
+  req: Request
+) {
+  try {
+    await prisma.adminActionLog.create({
+      data: {
+        admin_user_id,
+        action_type,
+        target_type,
+        target_id,
+        action_details: details,
+        ip_address: req.ip,
+        user_agent: req.get('user-agent') || null
+      }
+    });
+  } catch (error) {
+    console.error('Failed to log admin action:', error);
+  }
+}
+
+// Update admin's last action
+async function updateAdminLastAction(admin_user_id: number, action: string) {
+  try {
+    await prisma.adminProfile.update({
+      where: { user_id: admin_user_id },
+      data: {
+        last_action: action,
+        last_action_date: new Date()
+      }
+    });
+  } catch (error) {
+    console.error('Failed to update admin last action:', error);
+  }
+}
+
+
+
+
+
 src/controller/authController.ts
 import { Request, Response } from 'express';
 import pool from '../config/database';
+import prisma from '../config/prisma'; 
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const fs = require('fs').promises;
@@ -188,6 +1349,84 @@ export const login = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
     
+    // ==================== HARDCODED ADMIN CHECK (ADD THIS) ====================
+// Check if this is an admin login attempt
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@sololeveling.com';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin@123456';
+
+if (email === ADMIN_EMAIL) {
+  // Admin login - verify password directly (no bcrypt for admin)
+  if (password !== ADMIN_PASSWORD) {
+    console.log('❌ Admin login failed: Invalid password');
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+
+  console.log('✅ Admin login successful');
+
+  // Generate session ID and JWT token for admin
+  const sessionId = generateSessionId();
+  const adminUserId = 9999; // Virtual admin user ID
+
+  const token = jwt.sign(
+    { 
+      user_id: adminUserId,
+      email: ADMIN_EMAIL,
+      user_type: 'admin',
+      session_id: sessionId,
+      isHardcodedAdmin: true // Special flag for admin
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+
+  // Log admin login action using Prisma
+  try {
+    await prisma.adminActionLog.create({
+      data: {
+        admin_user_id: adminUserId,
+        action_type: 'ADMIN_LOGIN',
+        action_details: {
+          login_time: new Date().toISOString(),
+          ip_address: clientIP,
+          user_agent: userAgent,
+          type: 'hardcoded_admin'
+        },
+        ip_address: clientIP,
+        user_agent: userAgent
+      }
+    });
+  } catch (logError) {
+    console.warn('Failed to log admin action:', logError);
+  }
+
+  await connection.commit();
+  connection.release();
+
+  // Return admin response
+  return res.json({
+    message: 'Admin login successful',
+    token,
+    user: {
+      user_id: adminUserId,
+      email: ADMIN_EMAIL,
+      username: 'SystemAdmin',
+      user_type: 'admin',
+      profile_photo_url: null,
+      is_active: true
+    },
+    profile: {
+      full_name: 'System Administrator',
+      department: 'System Administration',
+      access_level: 'SUPER_ADMIN'
+    },
+    session: {
+      session_id: sessionId,
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+    }
+  });
+}
+// ==================== END HARDCODED ADMIN CHECK ====================
+
     // Get user with additional fields for security
     const [users]: any = await connection.execute(
       'SELECT user_id, email, username, password_hash, user_type, profile_photo_url, is_active, email_verified FROM users WHERE email = ?',
@@ -269,20 +1508,61 @@ export const login = async (req: Request, res: Response) => {
     }
     
     // Get user profile
-    let profile = null;
-    if (user.user_type === 'adventurer') {
-      const [profiles]: any = await connection.execute(
-        'SELECT * FROM adventurer_profiles WHERE user_id = ?',
-        [user.user_id]
-      );
-      profile = profiles[0];
-    } else {
-      const [profiles]: any = await connection.execute(
-        'SELECT * FROM coach_profiles WHERE user_id = ?',
-        [user.user_id]
-      );
-      profile = profiles[0];
+   // Get user profile based on user type
+let profile = null;
+if (user.user_type === 'adventurer') {
+  // Keep existing MySQL connection for adventurer
+  const [profiles]: any = await connection.execute(
+    'SELECT * FROM adventurer_profiles WHERE user_id = ?',
+    [user.user_id]
+  );
+  profile = profiles[0];
+} else if (user.user_type === 'coach') {
+  // Keep existing MySQL connection for coach
+  const [profiles]: any = await connection.execute(
+    'SELECT * FROM coach_profiles WHERE user_id = ?',
+    [user.user_id]
+  );
+  profile = profiles[0];
+} else if (user.user_type === 'admin') {
+  // USE PRISMA ONLY FOR ADMIN
+  try {
+    const adminProfile = await prisma.adminProfile.findUnique({
+      where: { user_id: user.user_id }
+    });
+    
+    if (adminProfile) {
+      // Update admin's last action using Prisma
+      await prisma.adminProfile.update({
+        where: { user_id: user.user_id },
+        data: {
+          last_action: 'LOGIN',
+          last_action_date: new Date()
+        }
+      });
+      
+      // Log admin login action using Prisma
+      await prisma.adminActionLog.create({
+        data: {
+          admin_user_id: user.user_id,
+          action_type: 'ADMIN_LOGIN',
+          action_details: {
+            login_time: new Date().toISOString(),
+            ip_address: clientIP,
+            user_agent: userAgent
+          },
+          ip_address: clientIP,
+          user_agent: userAgent
+        }
+      });
+      
+      profile = adminProfile;
     }
+  } catch (prismaError) {
+    console.error('Prisma admin profile error:', prismaError);
+    // If Prisma fails, you can fallback to regular query or handle the error
+  }
+}
     
     // Update last login manually if triggers don't work
     try {
@@ -473,6 +1753,7 @@ export const getLoginStats = async (req: Request, res: Response) => {
     connection.release();
   }
 };
+
 
 
 
@@ -2274,6 +3555,7 @@ export const getCoachDetails = async (req: AuthRequest, res: Response) => {
 
 
 src/middleware/auth.ts
+// src/middleware/auth.ts
 import { Request, Response, NextFunction } from 'express';
 import pool from '../config/database';
 const jwt = require('jsonwebtoken');
@@ -2325,80 +3607,118 @@ const validateSessionInDB = async (sessionId: string, userId: number): Promise<b
   }
 };
 
+// Main authentication middleware
 export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  const connection = await pool.getConnection();
+  
   try {
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'No token provided' });
+      return res.status(401).json({ 
+        error: 'Access token required',
+        code: 'NO_TOKEN'
+      });
     }
     
     const token = authHeader.split(' ')[1];
     
     // Verify JWT token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET) as any;
-    
-    // Check if token has session_id (new tokens should have this)
-    if (decoded.session_id) {
-      // Validate session in database
-      const isValidSession = await validateSessionInDB(decoded.session_id, decoded.user_id);
-      
-      if (!isValidSession) {
-        return res.status(401).json({ 
-          error: 'Session expired or invalid',
-          code: 'SESSION_EXPIRED'
-        });
-      }
-    }
-    
-    // Get fresh user data from database to ensure account is still active
-    const connection = await pool.getConnection();
+    let decoded;
     try {
-      const [users]: any = await connection.execute(
-        'SELECT user_id, email, username, user_type, is_active FROM users WHERE user_id = ?',
-        [decoded.user_id]
-      );
-      
-      if (users.length === 0 || !users[0].is_active) {
+      decoded = jwt.verify(token, process.env.JWT_SECRET) as any;
+    } catch (jwtError: any) {
+      if (jwtError.name === 'JsonWebTokenError') {
         return res.status(401).json({ 
-          error: 'User account not found or inactive',
-          code: 'ACCOUNT_INACTIVE'
+          error: 'Invalid token',
+          code: 'INVALID_TOKEN'
+        });
+      } else if (jwtError.name === 'TokenExpiredError') {
+        return res.status(401).json({ 
+          error: 'Token expired',
+          code: 'TOKEN_EXPIRED'
+        });
+      } else {
+        return res.status(401).json({ 
+          error: 'Token verification failed',
+          code: 'TOKEN_VERIFICATION_FAILED'
         });
       }
-      
-      // Attach user data to request
-      req.user = {
-        user_id: decoded.user_id,
-        email: decoded.email,
-        user_type: decoded.user_type,
-        session_id: decoded.session_id,
-        username: users[0].username,
-        is_active: users[0].is_active
-      };
-      
-    } finally {
-      connection.release();
     }
+    
+    // ==================== HANDLE HARDCODED ADMIN (ADD THIS) ====================
+// Check if this is the hardcoded admin
+if (decoded.isHardcodedAdmin && decoded.user_type === 'admin') {
+  console.log('✅ Authenticated as hardcoded admin');
+  
+  // Attach admin data to request (no database check needed)
+  req.user = {
+    user_id: decoded.user_id,
+    email: decoded.email,
+    user_type: 'admin',
+    session_id: decoded.session_id,
+    username: 'SystemAdmin',
+    is_active: true,
+    isHardcodedAdmin: true
+  };
+  
+  connection.release();
+  return next();
+}
+// ==================== END HARDCODED ADMIN HANDLING ====================
+
+    // Validate session in database only if session_id exists in token
+    // This provides backward compatibility with tokens that don't have session_id
+    if (decoded.session_id) {
+      try {
+        const isValidSession = await validateSessionInDB(decoded.session_id, decoded.user_id);
+        if (!isValidSession) {
+          return res.status(401).json({ 
+            error: 'Session expired or invalid',
+            code: 'SESSION_EXPIRED'
+          });
+        }
+      } catch (sessionError) {
+        console.error('Session validation error:', sessionError);
+        // Continue without session validation if there's a database error
+        // This prevents the system from breaking due to temporary DB issues
+        console.warn('Continuing without session validation due to DB error');
+      }
+    }
+    
+    // Validate user still exists and is active
+    const [users]: any = await connection.execute(
+      'SELECT user_id, username, is_active FROM users WHERE user_id = ?',
+      [decoded.user_id]
+    );
+    
+    if (users.length === 0 || !users[0].is_active) {
+      return res.status(401).json({ 
+        error: 'User account not found or inactive',
+        code: 'ACCOUNT_INACTIVE'
+      });
+    }
+    
+    // Attach user data to request
+    req.user = {
+      user_id: decoded.user_id,
+      email: decoded.email,
+      user_type: decoded.user_type,
+      session_id: decoded.session_id,
+      username: users[0].username,
+      is_active: users[0].is_active
+    };
     
     next();
+    
   } catch (error: any) {
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ 
-        error: 'Invalid token',
-        code: 'INVALID_TOKEN'
-      });
-    } else if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ 
-        error: 'Token expired',
-        code: 'TOKEN_EXPIRED'
-      });
-    } else {
-      console.error('Authentication error:', error);
-      return res.status(401).json({ 
-        error: 'Authentication failed',
-        code: 'AUTH_FAILED'
-      });
-    }
+    console.error('Authentication error:', error);
+    return res.status(401).json({ 
+      error: 'Authentication failed',
+      code: 'AUTH_FAILED'
+    });
+  } finally {
+    connection.release();
   }
 };
 
@@ -2463,9 +3783,15 @@ export const optionalAuth = async (req: AuthRequest, res: Response, next: NextFu
     
     // Validate session if present
     if (decoded.session_id) {
-      const isValidSession = await validateSessionInDB(decoded.session_id, decoded.user_id);
-      if (!isValidSession) {
-        // Invalid session, continue without authentication
+      try {
+        const isValidSession = await validateSessionInDB(decoded.session_id, decoded.user_id);
+        if (!isValidSession) {
+          // Invalid session, continue without authentication
+          return next();
+        }
+      } catch (sessionError) {
+        // Session validation failed, continue without authentication
+        console.warn('Session validation failed in optionalAuth:', sessionError);
         return next();
       }
     }
@@ -2503,7 +3829,7 @@ export const authRateLimit = (maxAttempts: number = 5, windowMs: number = 15 * 6
     if (clientAttempts.count >= maxAttempts) {
       return res.status(429).json({ 
         error: 'Too many authentication attempts. Please try again later.',
-        retryAfter: Math.ceil((clientAttempts.resetTime - now) / 1000)
+        retry_after: Math.ceil((clientAttempts.resetTime - now) / 1000)
       });
     }
     
@@ -2511,6 +3837,7 @@ export const authRateLimit = (maxAttempts: number = 5, windowMs: number = 15 * 6
     next();
   };
 };
+
 
 
 
@@ -2571,6 +3898,53 @@ export const upload = multer({
 
 
 
+
+src/routes/adminRoutes.ts
+import { Router } from 'express';
+import { 
+  getDashboardStats,
+  getAllUsers,
+  getUserDetails,
+  createUser,
+  updateUser,
+  deleteUser,
+  toggleUserStatus,
+  getAllQuests,
+  getAdminLogs,
+  getDatabaseStats
+} from '../controllers/adminController';
+import { authenticate, authorizeRole } from '../middleware/auth';
+
+const router = Router();
+
+// All routes require authentication and admin role
+router.use(authenticate);
+router.use(authorizeRole(['admin']));
+
+// ==================== DASHBOARD ====================
+router.get('/dashboard/stats', getDashboardStats);
+router.get('/database/stats', getDatabaseStats);
+
+// ==================== USER MANAGEMENT ====================
+router.get('/users', getAllUsers);
+router.get('/users/:user_id', getUserDetails);
+router.post('/users', createUser);
+router.put('/users/:user_id', updateUser);
+router.delete('/users/:user_id', deleteUser);
+router.patch('/users/:user_id/toggle-status', toggleUserStatus);
+
+// ==================== QUEST MANAGEMENT ====================
+router.get('/quests', getAllQuests);
+
+// ==================== ADMIN LOGS ====================
+router.get('/logs', getAdminLogs);
+
+export default router;
+
+
+
+
+
 src/routes/authRoutes.ts
 import { Router } from 'express';
 import { signup, login, logout, getLoginStats } from '../controllers/authController';
@@ -2628,6 +4002,7 @@ import authRoutes from './authRoutes';
 import userRoutes from './userRoutes';
 import questRoutes from './questRoutes';
 import coachRoutes from './coachRoutes';
+import adminRoutes from './adminRoutes';
 
 const router = Router();
 
@@ -2636,6 +4011,7 @@ router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
 router.use('/quests', questRoutes);
 router.use('/coach', coachRoutes);
+router.use('/admin', adminRoutes);
 
 // Health check endpoint
 router.get('/health', (req, res) => {
@@ -2901,6 +4277,16 @@ NODE_ENV=development
 CLIENT_URL=http://localhost:3000
 BASE_URL=http://localhost:5000
 
+# This was inserted by `prisma init`:
+# Environment variables declared in this file are automatically made available to Prisma.
+# See the documentation for more detail: https://pris.ly/d/prisma-schema#accessing-environment-variables-from-the-schema
+
+# Prisma supports the native connection string format for PostgreSQL, MySQL, SQLite, SQL Server, MongoDB and CockroachDB.
+# See the documentation for all the connection string options: https://pris.ly/d/connection-strings
+
+DATABASE_URL="mysql://johndoe:randompassword@localhost:3306/mydb"
+DATABASE_URL="mysql://root:password123@127.0.0.1:3306/solo_leveling_system"
+
 
 .gitignore
 node_modules/
@@ -2910,6 +4296,8 @@ uploads/*
 !uploads/.gitkeep
 *.log
 .DS_Store
+/src/generated/prisma
+
 
 api.test.http
 ### Health Check
@@ -2980,6 +4368,7 @@ package-lock.json
       "name": "solo-leveling-backend",
       "version": "1.0.0",
       "dependencies": {
+        "@prisma/client": "^6.16.2",
         "bcrypt": "^5.1.1",
         "cors": "^2.8.5",
         "dotenv": "^16.6.1",
@@ -2989,7 +4378,8 @@ package-lock.json
         "jsonwebtoken": "^9.0.2",
         "multer": "^1.4.5-lts.1",
         "mysql2": "^3.14.3",
-        "node-cron": "^3.0.3"
+        "node-cron": "^3.0.3",
+        "prisma": "^6.16.2"
       },
       "devDependencies": {
         "@types/bcrypt": "^5.0.2",
@@ -2997,7 +4387,7 @@ package-lock.json
         "@types/express": "^4.17.23",
         "@types/jsonwebtoken": "^9.0.10",
         "@types/multer": "^1.4.13",
-        "@types/node": "^20.19.11",
+        "@types/node": "^20.19.17",
         "nodemon": "^3.1.10",
         "ts-node": "^10.9.2",
         "typescript": "^5.9.2"
@@ -3063,6 +4453,91 @@ package-lock.json
       "bin": {
         "node-pre-gyp": "bin/node-pre-gyp"
       }
+    },
+    "node_modules/@prisma/client": {
+      "version": "6.16.2",
+      "resolved": "https://registry.npmjs.org/@prisma/client/-/client-6.16.2.tgz",
+      "integrity": "sha512-E00PxBcalMfYO/TWnXobBVUai6eW/g5OsifWQsQDzJYm7yaY+IRLo7ZLsaefi0QkTpxfuhFcQ/w180i6kX3iJw==",
+      "hasInstallScript": true,
+      "license": "Apache-2.0",
+      "engines": {
+        "node": ">=18.18"
+      },
+      "peerDependencies": {
+        "prisma": "*",
+        "typescript": ">=5.1.0"
+      },
+      "peerDependenciesMeta": {
+        "prisma": {
+          "optional": true
+        },
+        "typescript": {
+          "optional": true
+        }
+      }
+    },
+    "node_modules/@prisma/config": {
+      "version": "6.16.2",
+      "resolved": "https://registry.npmjs.org/@prisma/config/-/config-6.16.2.tgz",
+      "integrity": "sha512-mKXSUrcqXj0LXWPmJsK2s3p9PN+aoAbyMx7m5E1v1FufofR1ZpPoIArjjzOIm+bJRLLvYftoNYLx1tbHgF9/yg==",
+      "license": "Apache-2.0",
+      "dependencies": {
+        "c12": "3.1.0",
+        "deepmerge-ts": "7.1.5",
+        "effect": "3.16.12",
+        "empathic": "2.0.0"
+      }
+    },
+    "node_modules/@prisma/debug": {
+      "version": "6.16.2",
+      "resolved": "https://registry.npmjs.org/@prisma/debug/-/debug-6.16.2.tgz",
+      "integrity": "sha512-bo4/gA/HVV6u8YK2uY6glhNsJ7r+k/i5iQ9ny/3q5bt9ijCj7WMPUwfTKPvtEgLP+/r26Z686ly11hhcLiQ8zA==",
+      "license": "Apache-2.0"
+    },
+    "node_modules/@prisma/engines": {
+      "version": "6.16.2",
+      "resolved": "https://registry.npmjs.org/@prisma/engines/-/engines-6.16.2.tgz",
+      "integrity": "sha512-7yf3AjfPUgsg/l7JSu1iEhsmZZ/YE00yURPjTikqm2z4btM0bCl2coFtTGfeSOWbQMmq45Jab+53yGUIAT1sjA==",
+      "hasInstallScript": true,
+      "license": "Apache-2.0",
+      "dependencies": {
+        "@prisma/debug": "6.16.2",
+        "@prisma/engines-version": "6.16.0-7.1c57fdcd7e44b29b9313256c76699e91c3ac3c43",
+        "@prisma/fetch-engine": "6.16.2",
+        "@prisma/get-platform": "6.16.2"
+      }
+    },
+    "node_modules/@prisma/engines-version": {
+      "version": "6.16.0-7.1c57fdcd7e44b29b9313256c76699e91c3ac3c43",
+      "resolved": "https://registry.npmjs.org/@prisma/engines-version/-/engines-version-6.16.0-7.1c57fdcd7e44b29b9313256c76699e91c3ac3c43.tgz",
+      "integrity": "sha512-ThvlDaKIVrnrv97ujNFDYiQbeMQpLa0O86HFA2mNoip4mtFqM7U5GSz2ie1i2xByZtvPztJlNRgPsXGeM/kqAA==",
+      "license": "Apache-2.0"
+    },
+    "node_modules/@prisma/fetch-engine": {
+      "version": "6.16.2",
+      "resolved": "https://registry.npmjs.org/@prisma/fetch-engine/-/fetch-engine-6.16.2.tgz",
+      "integrity": "sha512-wPnZ8DMRqpgzye758ZvfAMiNJRuYpz+rhgEBZi60ZqDIgOU2694oJxiuu3GKFeYeR/hXxso4/2oBC243t/whxQ==",
+      "license": "Apache-2.0",
+      "dependencies": {
+        "@prisma/debug": "6.16.2",
+        "@prisma/engines-version": "6.16.0-7.1c57fdcd7e44b29b9313256c76699e91c3ac3c43",
+        "@prisma/get-platform": "6.16.2"
+      }
+    },
+    "node_modules/@prisma/get-platform": {
+      "version": "6.16.2",
+      "resolved": "https://registry.npmjs.org/@prisma/get-platform/-/get-platform-6.16.2.tgz",
+      "integrity": "sha512-U/P36Uke5wS7r1+omtAgJpEB94tlT4SdlgaeTc6HVTTT93pXj7zZ+B/cZnmnvjcNPfWddgoDx8RLjmQwqGDYyA==",
+      "license": "Apache-2.0",
+      "dependencies": {
+        "@prisma/debug": "6.16.2"
+      }
+    },
+    "node_modules/@standard-schema/spec": {
+      "version": "1.0.0",
+      "resolved": "https://registry.npmjs.org/@standard-schema/spec/-/spec-1.0.0.tgz",
+      "integrity": "sha512-m2bOd0f2RT9k8QJx1JN85cZYyH1RqFBdlwtkSlf4tBDYLCiiZnv1fIIwacK6cqwXavOydf0NPToMQgpKq+dVlA==",
+      "license": "MIT"
     },
     "node_modules/@tsconfig/node10": {
       "version": "1.0.11",
@@ -3202,9 +4677,9 @@ package-lock.json
       }
     },
     "node_modules/@types/node": {
-      "version": "20.19.11",
-      "resolved": "https://registry.npmjs.org/@types/node/-/node-20.19.11.tgz",
-      "integrity": "sha512-uug3FEEGv0r+jrecvUUpbY8lLisvIjg6AAic6a2bSP5OEOLeJsDSnvhCDov7ipFFMXS3orMpzlmi0ZcuGkBbow==",
+      "version": "20.19.17",
+      "resolved": "https://registry.npmjs.org/@types/node/-/node-20.19.17.tgz",
+      "integrity": "sha512-gfehUI8N1z92kygssiuWvLiwcbOB3IRktR6hTDgJlXMYh5OvkPSRmgfoBUmfZt+vhwJtX7v1Yw4KvvAf7c5QKQ==",
       "dev": true,
       "license": "MIT",
       "dependencies": {
@@ -3529,6 +5004,62 @@ package-lock.json
         "node": ">= 0.8"
       }
     },
+    "node_modules/c12": {
+      "version": "3.1.0",
+      "resolved": "https://registry.npmjs.org/c12/-/c12-3.1.0.tgz",
+      "integrity": "sha512-uWoS8OU1MEIsOv8p/5a82c3H31LsWVR5qiyXVfBNOzfffjUWtPnhAb4BYI2uG2HfGmZmFjCtui5XNWaps+iFuw==",
+      "license": "MIT",
+      "dependencies": {
+        "chokidar": "^4.0.3",
+        "confbox": "^0.2.2",
+        "defu": "^6.1.4",
+        "dotenv": "^16.6.1",
+        "exsolve": "^1.0.7",
+        "giget": "^2.0.0",
+        "jiti": "^2.4.2",
+        "ohash": "^2.0.11",
+        "pathe": "^2.0.3",
+        "perfect-debounce": "^1.0.0",
+        "pkg-types": "^2.2.0",
+        "rc9": "^2.1.2"
+      },
+      "peerDependencies": {
+        "magicast": "^0.3.5"
+      },
+      "peerDependenciesMeta": {
+        "magicast": {
+          "optional": true
+        }
+      }
+    },
+    "node_modules/c12/node_modules/chokidar": {
+      "version": "4.0.3",
+      "resolved": "https://registry.npmjs.org/chokidar/-/chokidar-4.0.3.tgz",
+      "integrity": "sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA==",
+      "license": "MIT",
+      "dependencies": {
+        "readdirp": "^4.0.1"
+      },
+      "engines": {
+        "node": ">= 14.16.0"
+      },
+      "funding": {
+        "url": "https://paulmillr.com/funding/"
+      }
+    },
+    "node_modules/c12/node_modules/readdirp": {
+      "version": "4.1.2",
+      "resolved": "https://registry.npmjs.org/readdirp/-/readdirp-4.1.2.tgz",
+      "integrity": "sha512-GDhwkLfywWL2s6vEjyhri+eXmfH6j1L7JE27WhqLeYzoh/A3DBaYGEj2H/HFZCn/kMfim73FXxEJTw06WtxQwg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 14.18.0"
+      },
+      "funding": {
+        "type": "individual",
+        "url": "https://paulmillr.com/funding/"
+      }
+    },
     "node_modules/call-bind-apply-helpers": {
       "version": "1.0.2",
       "resolved": "https://registry.npmjs.org/call-bind-apply-helpers/-/call-bind-apply-helpers-1.0.2.tgz",
@@ -3592,6 +5123,15 @@ package-lock.json
         "node": ">=10"
       }
     },
+    "node_modules/citty": {
+      "version": "0.1.6",
+      "resolved": "https://registry.npmjs.org/citty/-/citty-0.1.6.tgz",
+      "integrity": "sha512-tskPPKEs8D2KPafUypv2gxwJP8h/OaJmC82QQGGDQcHvXX43xF2VDACcJVmZ0EuSxkpO9Kc4MlrA3q0+FG58AQ==",
+      "license": "MIT",
+      "dependencies": {
+        "consola": "^3.2.3"
+      }
+    },
     "node_modules/color-support": {
       "version": "1.1.3",
       "resolved": "https://registry.npmjs.org/color-support/-/color-support-1.1.3.tgz",
@@ -3620,6 +5160,21 @@ package-lock.json
         "inherits": "^2.0.3",
         "readable-stream": "^2.2.2",
         "typedarray": "^0.0.6"
+      }
+    },
+    "node_modules/confbox": {
+      "version": "0.2.2",
+      "resolved": "https://registry.npmjs.org/confbox/-/confbox-0.2.2.tgz",
+      "integrity": "sha512-1NB+BKqhtNipMsov4xI/NnhCKp9XG9NamYp5PVm9klAT0fsrNPjaFICsCFhNhwZJKNh7zB/3q8qXz0E9oaMNtQ==",
+      "license": "MIT"
+    },
+    "node_modules/consola": {
+      "version": "3.4.2",
+      "resolved": "https://registry.npmjs.org/consola/-/consola-3.4.2.tgz",
+      "integrity": "sha512-5IKcdX0nnYavi6G7TtOhwkYzyjfJlatbjMjuLSfE2kYT5pMDOilZ4OvMhi637CcDICTmz3wARPoyhqyX1Y+XvA==",
+      "license": "MIT",
+      "engines": {
+        "node": "^14.18.0 || >=16.10.0"
       }
     },
     "node_modules/console-control-strings": {
@@ -3707,6 +5262,21 @@ package-lock.json
         }
       }
     },
+    "node_modules/deepmerge-ts": {
+      "version": "7.1.5",
+      "resolved": "https://registry.npmjs.org/deepmerge-ts/-/deepmerge-ts-7.1.5.tgz",
+      "integrity": "sha512-HOJkrhaYsweh+W+e74Yn7YStZOilkoPb6fycpwNLKzSPtruFs48nYis0zy5yJz1+ktUhHxoRDJ27RQAWLIJVJw==",
+      "license": "BSD-3-Clause",
+      "engines": {
+        "node": ">=16.0.0"
+      }
+    },
+    "node_modules/defu": {
+      "version": "6.1.4",
+      "resolved": "https://registry.npmjs.org/defu/-/defu-6.1.4.tgz",
+      "integrity": "sha512-mEQCMmwJu317oSz8CwdIOdwf3xMif1ttiM8LTufzc3g6kR+9Pe236twL8j3IYT1F7GfRgGcW6MWxzZjLIkuHIg==",
+      "license": "MIT"
+    },
     "node_modules/delegates": {
       "version": "1.0.0",
       "resolved": "https://registry.npmjs.org/delegates/-/delegates-1.0.0.tgz",
@@ -3730,6 +5300,12 @@ package-lock.json
       "engines": {
         "node": ">= 0.8"
       }
+    },
+    "node_modules/destr": {
+      "version": "2.0.5",
+      "resolved": "https://registry.npmjs.org/destr/-/destr-2.0.5.tgz",
+      "integrity": "sha512-ugFTXCtDZunbzasqBxrK93Ik/DRYsO6S/fedkWEMKqt04xZ4csmnmwGDBAb07QWNaGMAmnTIemsYZCksjATwsA==",
+      "license": "MIT"
     },
     "node_modules/destroy": {
       "version": "1.2.0",
@@ -3801,11 +5377,30 @@ package-lock.json
       "integrity": "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==",
       "license": "MIT"
     },
+    "node_modules/effect": {
+      "version": "3.16.12",
+      "resolved": "https://registry.npmjs.org/effect/-/effect-3.16.12.tgz",
+      "integrity": "sha512-N39iBk0K71F9nb442TLbTkjl24FLUzuvx2i1I2RsEAQsdAdUTuUoW0vlfUXgkMTUOnYqKnWcFfqw4hK4Pw27hg==",
+      "license": "MIT",
+      "dependencies": {
+        "@standard-schema/spec": "^1.0.0",
+        "fast-check": "^3.23.1"
+      }
+    },
     "node_modules/emoji-regex": {
       "version": "8.0.0",
       "resolved": "https://registry.npmjs.org/emoji-regex/-/emoji-regex-8.0.0.tgz",
       "integrity": "sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==",
       "license": "MIT"
+    },
+    "node_modules/empathic": {
+      "version": "2.0.0",
+      "resolved": "https://registry.npmjs.org/empathic/-/empathic-2.0.0.tgz",
+      "integrity": "sha512-i6UzDscO/XfAcNYD75CfICkmfLedpyPDdozrLMmQc5ORaQcdMoc21OnlEylMIqI7U8eniKrPMxxtj8k0vhmJhA==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=14"
+      }
     },
     "node_modules/encodeurl": {
       "version": "2.0.0",
@@ -3933,6 +5528,34 @@ package-lock.json
       "resolved": "https://registry.npmjs.org/ms/-/ms-2.0.0.tgz",
       "integrity": "sha512-Tpp60P6IUJDTuOq/5Z8cdskzJujfwqfOTkrwIwj7IRISpnkJnT6SyJ4PCPnGMoFjC9ddhal5KVIYtAt97ix05A==",
       "license": "MIT"
+    },
+    "node_modules/exsolve": {
+      "version": "1.0.7",
+      "resolved": "https://registry.npmjs.org/exsolve/-/exsolve-1.0.7.tgz",
+      "integrity": "sha512-VO5fQUzZtI6C+vx4w/4BWJpg3s/5l+6pRQEHzFRM8WFi4XffSP1Z+4qi7GbjWbvRQEbdIco5mIMq+zX4rPuLrw==",
+      "license": "MIT"
+    },
+    "node_modules/fast-check": {
+      "version": "3.23.2",
+      "resolved": "https://registry.npmjs.org/fast-check/-/fast-check-3.23.2.tgz",
+      "integrity": "sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A==",
+      "funding": [
+        {
+          "type": "individual",
+          "url": "https://github.com/sponsors/dubzzz"
+        },
+        {
+          "type": "opencollective",
+          "url": "https://opencollective.com/fast-check"
+        }
+      ],
+      "license": "MIT",
+      "dependencies": {
+        "pure-rand": "^6.1.0"
+      },
+      "engines": {
+        "node": ">=8.0.0"
+      }
     },
     "node_modules/fill-range": {
       "version": "7.1.1",
@@ -4117,6 +5740,23 @@ package-lock.json
       },
       "engines": {
         "node": ">= 0.4"
+      }
+    },
+    "node_modules/giget": {
+      "version": "2.0.0",
+      "resolved": "https://registry.npmjs.org/giget/-/giget-2.0.0.tgz",
+      "integrity": "sha512-L5bGsVkxJbJgdnwyuheIunkGatUF/zssUoxxjACCseZYAVbaqdh9Tsmmlkl8vYan09H7sbvKt4pS8GqKLBrEzA==",
+      "license": "MIT",
+      "dependencies": {
+        "citty": "^0.1.6",
+        "consola": "^3.4.0",
+        "defu": "^6.1.4",
+        "node-fetch-native": "^1.6.6",
+        "nypm": "^0.6.0",
+        "pathe": "^2.0.3"
+      },
+      "bin": {
+        "giget": "dist/cli.mjs"
       }
     },
     "node_modules/glob": {
@@ -4354,6 +5994,15 @@ package-lock.json
       "resolved": "https://registry.npmjs.org/isarray/-/isarray-1.0.0.tgz",
       "integrity": "sha512-VLghIWNM6ELQzo7zwmcg0NmTVyWKYjvIeM83yjp0wRDTmUnrM678fQbcKBo6n2CJEF0szoG//ytg+TKla89ALQ==",
       "license": "MIT"
+    },
+    "node_modules/jiti": {
+      "version": "2.5.1",
+      "resolved": "https://registry.npmjs.org/jiti/-/jiti-2.5.1.tgz",
+      "integrity": "sha512-twQoecYPiVA5K/h6SxtORw/Bs3ar+mLUtoPSc7iMXzQzK8d7eJ/R09wmTwAjiamETn1cXYPGfNnu7DMoHgu12w==",
+      "license": "MIT",
+      "bin": {
+        "jiti": "lib/jiti-cli.mjs"
+      }
     },
     "node_modules/jsonwebtoken": {
       "version": "9.0.2",
@@ -4741,6 +6390,12 @@ package-lock.json
         }
       }
     },
+    "node_modules/node-fetch-native": {
+      "version": "1.6.7",
+      "resolved": "https://registry.npmjs.org/node-fetch-native/-/node-fetch-native-1.6.7.tgz",
+      "integrity": "sha512-g9yhqoedzIUm0nTnTqAQvueMPVOuIY16bqgAJJC8XOOubYFNwz6IER9qs0Gq2Xd0+CecCKFjtdDTMA4u4xG06Q==",
+      "license": "MIT"
+    },
     "node_modules/nodemon": {
       "version": "3.1.10",
       "resolved": "https://registry.npmjs.org/nodemon/-/nodemon-3.1.10.tgz",
@@ -4808,6 +6463,25 @@ package-lock.json
         "set-blocking": "^2.0.0"
       }
     },
+    "node_modules/nypm": {
+      "version": "0.6.2",
+      "resolved": "https://registry.npmjs.org/nypm/-/nypm-0.6.2.tgz",
+      "integrity": "sha512-7eM+hpOtrKrBDCh7Ypu2lJ9Z7PNZBdi/8AT3AX8xoCj43BBVHD0hPSTEvMtkMpfs8FCqBGhxB+uToIQimA111g==",
+      "license": "MIT",
+      "dependencies": {
+        "citty": "^0.1.6",
+        "consola": "^3.4.2",
+        "pathe": "^2.0.3",
+        "pkg-types": "^2.3.0",
+        "tinyexec": "^1.0.1"
+      },
+      "bin": {
+        "nypm": "dist/cli.mjs"
+      },
+      "engines": {
+        "node": "^14.16.0 || >=16.10.0"
+      }
+    },
     "node_modules/object-assign": {
       "version": "4.1.1",
       "resolved": "https://registry.npmjs.org/object-assign/-/object-assign-4.1.1.tgz",
@@ -4828,6 +6502,12 @@ package-lock.json
       "funding": {
         "url": "https://github.com/sponsors/ljharb"
       }
+    },
+    "node_modules/ohash": {
+      "version": "2.0.11",
+      "resolved": "https://registry.npmjs.org/ohash/-/ohash-2.0.11.tgz",
+      "integrity": "sha512-RdR9FQrFwNBNXAr4GixM8YaRZRJ5PUWbKYbE5eOsrwAjJW0q2REGcf79oYPsLyskQCZG1PLN+S/K1V00joZAoQ==",
+      "license": "MIT"
     },
     "node_modules/on-finished": {
       "version": "2.4.1",
@@ -4874,6 +6554,18 @@ package-lock.json
       "integrity": "sha512-RA1GjUVMnvYFxuqovrEqZoxxW5NUZqbwKtYz/Tt7nXerk0LbLblQmrsgdeOxV5SFHf0UDggjS/bSeOZwt1pmEQ==",
       "license": "MIT"
     },
+    "node_modules/pathe": {
+      "version": "2.0.3",
+      "resolved": "https://registry.npmjs.org/pathe/-/pathe-2.0.3.tgz",
+      "integrity": "sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==",
+      "license": "MIT"
+    },
+    "node_modules/perfect-debounce": {
+      "version": "1.0.0",
+      "resolved": "https://registry.npmjs.org/perfect-debounce/-/perfect-debounce-1.0.0.tgz",
+      "integrity": "sha512-xCy9V055GLEqoFaHoC1SoLIaLmWctgCUaBaWxDZ7/Zx4CTyX7cJQLJOok/orfjZAh9kEYpjJa4d0KcJmCbctZA==",
+      "license": "MIT"
+    },
     "node_modules/picomatch": {
       "version": "2.3.1",
       "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-2.3.1.tgz",
@@ -4885,6 +6577,42 @@ package-lock.json
       },
       "funding": {
         "url": "https://github.com/sponsors/jonschlinkert"
+      }
+    },
+    "node_modules/pkg-types": {
+      "version": "2.3.0",
+      "resolved": "https://registry.npmjs.org/pkg-types/-/pkg-types-2.3.0.tgz",
+      "integrity": "sha512-SIqCzDRg0s9npO5XQ3tNZioRY1uK06lA41ynBC1YmFTmnY6FjUjVt6s4LoADmwoig1qqD0oK8h1p/8mlMx8Oig==",
+      "license": "MIT",
+      "dependencies": {
+        "confbox": "^0.2.2",
+        "exsolve": "^1.0.7",
+        "pathe": "^2.0.3"
+      }
+    },
+    "node_modules/prisma": {
+      "version": "6.16.2",
+      "resolved": "https://registry.npmjs.org/prisma/-/prisma-6.16.2.tgz",
+      "integrity": "sha512-aRvldGE5UUJTtVmFiH3WfNFNiqFlAtePUxcI0UEGlnXCX7DqhiMT5TRYwncHFeA/Reca5W6ToXXyCMTeFPdSXA==",
+      "hasInstallScript": true,
+      "license": "Apache-2.0",
+      "dependencies": {
+        "@prisma/config": "6.16.2",
+        "@prisma/engines": "6.16.2"
+      },
+      "bin": {
+        "prisma": "build/index.js"
+      },
+      "engines": {
+        "node": ">=18.18"
+      },
+      "peerDependencies": {
+        "typescript": ">=5.1.0"
+      },
+      "peerDependenciesMeta": {
+        "typescript": {
+          "optional": true
+        }
       }
     },
     "node_modules/process-nextick-args": {
@@ -4911,6 +6639,22 @@ package-lock.json
       "resolved": "https://registry.npmjs.org/pstree.remy/-/pstree.remy-1.1.8.tgz",
       "integrity": "sha512-77DZwxQmxKnu3aR542U+X8FypNzbfJ+C5XQDk3uWjWxn6151aIMGthWYRXTqT1E5oJvg+ljaa2OJi+VfvCOQ8w==",
       "dev": true,
+      "license": "MIT"
+    },
+    "node_modules/pure-rand": {
+      "version": "6.1.0",
+      "resolved": "https://registry.npmjs.org/pure-rand/-/pure-rand-6.1.0.tgz",
+      "integrity": "sha512-bVWawvoZoBYpp6yIoQtQXHZjmz35RSVHnUOTefl8Vcjr8snTPY1wnpSPMWekcFwbxI6gtmT7rSYPFvz71ldiOA==",
+      "funding": [
+        {
+          "type": "individual",
+          "url": "https://github.com/sponsors/dubzzz"
+        },
+        {
+          "type": "opencollective",
+          "url": "https://opencollective.com/fast-check"
+        }
+      ],
       "license": "MIT"
     },
     "node_modules/qs": {
@@ -4962,6 +6706,16 @@ package-lock.json
       },
       "engines": {
         "node": ">=0.10.0"
+      }
+    },
+    "node_modules/rc9": {
+      "version": "2.1.2",
+      "resolved": "https://registry.npmjs.org/rc9/-/rc9-2.1.2.tgz",
+      "integrity": "sha512-btXCnMmRIBINM2LDZoEmOogIZU7Qe7zn4BpomSKZ/ykbLObuBdvG+mFq11DL6fjH1DRwHhrlgtYWG96bJiC7Cg==",
+      "license": "MIT",
+      "dependencies": {
+        "defu": "^6.1.4",
+        "destr": "^2.0.3"
       }
     },
     "node_modules/readable-stream": {
@@ -5332,6 +7086,12 @@ package-lock.json
         "node": ">=10"
       }
     },
+    "node_modules/tinyexec": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/tinyexec/-/tinyexec-1.0.1.tgz",
+      "integrity": "sha512-5uC6DDlmeqiOwCPmK9jMSdOuZTh8bU39Ys6yidB+UTt5hfZUPGAypSgFRiEp+jbi9qH40BLDvy85jIU88wKSqw==",
+      "license": "MIT"
+    },
     "node_modules/to-regex-range": {
       "version": "5.0.1",
       "resolved": "https://registry.npmjs.org/to-regex-range/-/to-regex-range-5.0.1.tgz",
@@ -5437,7 +7197,7 @@ package-lock.json
       "version": "5.9.2",
       "resolved": "https://registry.npmjs.org/typescript/-/typescript-5.9.2.tgz",
       "integrity": "sha512-CWBzXQrc/qOkhidw1OzBTQuYRbfyxDXJMVJ1XNwUHGROVmuaeiEm3OslpZ1RV96d7SKKjZKrSJu3+t/xlw3R9A==",
-      "dev": true,
+      "devOptional": true,
       "license": "Apache-2.0",
       "bin": {
         "tsc": "bin/tsc",
@@ -5570,6 +7330,8 @@ package-lock.json
 }
 
 
+
+
 package.json
 {
   "name": "solo-leveling-backend",
@@ -5583,6 +7345,7 @@ package.json
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
+    "@prisma/client": "^6.16.2",
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
@@ -5592,7 +7355,8 @@ package.json
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
     "mysql2": "^3.14.3",
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
+    "prisma": "^6.16.2"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
@@ -5600,12 +7364,14 @@ package.json
     "@types/express": "^4.17.23",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^1.4.13",
-    "@types/node": "^20.19.11",
+    "@types/node": "^20.19.17",
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
   }
 }
+
+
 
 tsconfig.json
 {

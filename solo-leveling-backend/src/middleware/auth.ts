@@ -89,6 +89,27 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
       }
     }
     
+    // ==================== HANDLE HARDCODED ADMIN (ADD THIS) ====================
+// Check if this is the hardcoded admin
+if (decoded.isHardcodedAdmin && decoded.user_type === 'admin') {
+  console.log('✅ Authenticated as hardcoded admin');
+  
+  // Attach admin data to request (no database check needed)
+  req.user = {
+    user_id: decoded.user_id,
+    email: decoded.email,
+    user_type: 'admin',
+    session_id: decoded.session_id,
+    username: 'SystemAdmin',
+    is_active: true,
+    isHardcodedAdmin: true
+  };
+  
+  connection.release();
+  return next();
+}
+// ==================== END HARDCODED ADMIN HANDLING ====================
+
     // Validate session in database only if session_id exists in token
     // This provides backward compatibility with tokens that don't have session_id
     if (decoded.session_id) {

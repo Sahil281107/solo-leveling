@@ -1,0 +1,567 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  user_id                                                                        Int                           @id @default(autoincrement())
+  email                                                                          String                        @unique(map: "email") @db.VarChar(255)
+  username                                                                       String                        @unique(map: "username") @db.VarChar(100)
+  password_hash                                                                  String                        @db.VarChar(255)
+  user_type                                                                      UserType
+  profile_photo_url                                                              String?                       @db.VarChar(500)
+  created_at                                                                     DateTime?                     @default(now()) @db.Timestamp(0)
+  last_login                                                                     DateTime?                     @db.Timestamp(0)
+  is_active                                                                      Boolean?                      @default(true)
+  email_verified                                                                 Boolean?                      @default(false)
+  verification_token                                                             String?                       @db.VarChar(255)
+  reset_password_token                                                           String?                       @db.VarChar(255)
+  reset_password_expires                                                         DateTime?                     @db.Timestamp(0)
+  activity_logs                                                                  activity_logs[]
+  adminProfile                                                                   AdminProfile?
+  adventurerProfile                                                              AdventurerProfile?
+  coach_feedback_coach_feedback_coach_user_idTousers                             coach_feedback[]              @relation("coach_feedback_coach_user_idTousers")
+  coach_feedback_coach_feedback_student_user_idTousers                           coach_feedback[]              @relation("coach_feedback_student_user_idTousers")
+  coachProfile                                                                   CoachProfile?
+  coach_student_relationships_coach_student_relationships_coach_user_idTousers   coach_student_relationships[] @relation("coach_student_relationships_coach_user_idTousers")
+  coach_student_relationships_coach_student_relationships_student_user_idTousers coach_student_relationships[] @relation("coach_student_relationships_student_user_idTousers")
+  daily_checkins                                                                 daily_checkins[]
+  level_progression                                                              level_progression[]
+  media_uploads                                                                  media_uploads[]
+  notifications                                                                  notifications[]
+  quest_completion_history_quest_completion_history_user_idTousers               quest_completion_history[]    @relation("quest_completion_history_user_idTousers")
+  quest_completion_history_quest_completion_history_coach_user_idTousers         quest_completion_history[]    @relation("quest_completion_history_coach_user_idTousers")
+  user_achievements                                                              user_achievements[]
+  user_active_quests                                                             user_active_quests[]
+  user_custom_quests                                                             user_custom_quests[]
+  user_sessions                                                                  user_sessions[]
+  user_stats                                                                     user_stats[]
+
+  @@index([email], map: "idx_email")
+  @@index([user_type], map: "idx_user_type")
+  @@index([username], map: "idx_username")
+  @@map("users")
+}
+
+model AdminProfile {
+  admin_profile_id Int               @id @default(autoincrement())
+  user_id          Int               @unique(map: "user_id")
+  full_name        String            @db.VarChar(255)
+  department       String?           @default("System Administration") @db.VarChar(100)
+  access_level     AdminAccessLevel? @default(MODERATOR)
+  permissions      Json?
+  last_action      String?           @db.VarChar(255)
+  last_action_date DateTime?         @db.Timestamp(0)
+  created_at       DateTime?         @default(now()) @db.Timestamp(0)
+  updated_at       DateTime?         @default(now()) @updatedAt @db.Timestamp(0)
+  user             User              @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "admin_profiles_ibfk_1")
+
+  @@index([user_id], map: "idx_user_id")
+  @@map("admin_profiles")
+}
+
+model AdventurerProfile {
+  profile_id               Int             @id @default(autoincrement())
+  user_id                  Int             @unique(map: "user_id")
+  full_name                String          @db.VarChar(255)
+  field_of_interest        String          @db.VarChar(100)
+  custom_goal              String?         @db.Text
+  commitment_level         CommitmentLevel
+  experience_level         ExperienceLevel
+  current_level            Int?            @default(1)
+  total_exp                Int?            @default(0)
+  current_exp              Int?            @default(0)
+  exp_to_next_level        Int?            @default(100)
+  streak_days              Int?            @default(0)
+  longest_streak           Int?            @default(0)
+  last_activity_date       DateTime?       @db.Date
+  title                    String?         @default("Novice Adventurer") @db.VarChar(255)
+  timezone                 String?         @default("UTC") @db.VarChar(50)
+  notification_preferences Json?
+  created_at               DateTime?       @default(now()) @db.Timestamp(0)
+  updated_at               DateTime?       @default(now()) @updatedAt @db.Timestamp(0)
+  user                     User            @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "adventurer_profiles_ibfk_1")
+
+  @@index([streak_days, last_activity_date], map: "idx_adventurer_profiles_streak")
+  @@index([field_of_interest], map: "idx_field_of_interest")
+  @@index([current_level], map: "idx_level")
+  @@map("adventurer_profiles")
+}
+
+model CoachProfile {
+  coach_profile_id       Int                 @id @default(autoincrement())
+  user_id                Int                 @unique(map: "user_id")
+  full_name              String              @db.VarChar(255)
+  specialization         String?             @db.VarChar(100)
+  bio                    String?             @db.Text
+  credentials            String?             @db.Text
+  years_experience       Int?
+  max_students           Int?                @default(10)
+  current_students       Int?                @default(0)
+  verification_status    VerificationStatus? @default(pending)
+  created_at             DateTime?           @default(now()) @db.Timestamp(0)
+  updated_at             DateTime?           @default(now()) @updatedAt @db.Timestamp(0)
+  total_students_coached Int?                @default(0)
+  success_stories        Int?                @default(0)
+  certification          String?             @db.VarChar(255)
+  user                   User                @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "coach_profiles_ibfk_1")
+
+  @@index([specialization], map: "idx_specialization")
+  @@map("coach_profiles")
+}
+
+model AdminActionLog {
+  log_id         Int       @id @default(autoincrement())
+  admin_user_id  Int
+  action_type    String    @db.VarChar(100)
+  target_type    String?   @db.VarChar(50)
+  target_id      Int?
+  action_details Json?
+  ip_address     String?   @db.VarChar(45)
+  user_agent     String?   @db.Text
+  created_at     DateTime? @default(now()) @db.Timestamp(0)
+
+  @@index([action_type], map: "idx_action_type")
+  @@index([admin_user_id], map: "idx_admin_user")
+  @@index([created_at], map: "idx_created")
+  @@map("admin_action_logs")
+}
+
+model achievements {
+  achievement_id          Int                           @id @default(autoincrement())
+  achievement_name        String                        @db.VarChar(255)
+  achievement_description String?                       @db.Text
+  achievement_icon        String?                       @db.VarChar(10)
+  achievement_type        achievements_achievement_type
+  requirement_value       Int?
+  xp_reward               Int?                          @default(0)
+  is_active               Boolean?                      @default(true)
+  user_achievements       user_achievements[]
+}
+
+model activity_logs {
+  log_id           Int                         @id @default(autoincrement())
+  user_id          Int
+  activity_type    activity_logs_activity_type
+  activity_details Json?
+  ip_address       String?                     @db.VarChar(45)
+  user_agent       String?                     @db.Text
+  created_at       DateTime?                   @default(now()) @db.Timestamp(0)
+  users            User                        @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "activity_logs_ibfk_1")
+
+  @@index([ip_address, created_at], map: "idx_activity_logs_ip")
+  @@index([activity_type, created_at, user_id], map: "idx_activity_logs_login")
+  @@index([created_at], map: "idx_created")
+  @@index([activity_type], map: "idx_type")
+  @@index([user_id], map: "idx_user")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model coach_feedback {
+  feedback_id                                 Int                          @id @default(autoincrement())
+  coach_user_id                               Int
+  student_user_id                             Int
+  feedback_type                               coach_feedback_feedback_type
+  related_quest_id                            Int?
+  feedback_text                               String                       @db.Text
+  rating                                      Int?
+  is_read                                     Boolean?                     @default(false)
+  created_at                                  DateTime?                    @default(now()) @db.Timestamp(0)
+  users_coach_feedback_coach_user_idTousers   User                         @relation("coach_feedback_coach_user_idTousers", fields: [coach_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "coach_feedback_ibfk_1")
+  users_coach_feedback_student_user_idTousers User                         @relation("coach_feedback_student_user_idTousers", fields: [student_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "coach_feedback_ibfk_2")
+  quest_completion_history                    quest_completion_history?    @relation(fields: [related_quest_id], references: [completion_id], onUpdate: NoAction, map: "coach_feedback_ibfk_3")
+
+  @@index([coach_user_id], map: "idx_coach")
+  @@index([created_at], map: "idx_created")
+  @@index([student_user_id], map: "idx_student")
+  @@index([related_quest_id], map: "related_quest_id")
+}
+
+model coach_student_relationships {
+  relationship_id                                          Int                                            @id @default(autoincrement())
+  coach_user_id                                            Int
+  student_user_id                                          Int
+  status                                                   coach_student_relationships_status?            @default(pending)
+  relationship_type                                        coach_student_relationships_relationship_type? @default(primary)
+  started_at                                               DateTime?                                      @default(now()) @db.Timestamp(0)
+  ended_at                                                 DateTime?                                      @db.Timestamp(0)
+  notes                                                    String?                                        @db.Text
+  created_at                                               DateTime?                                      @default(now()) @db.Timestamp(0)
+  updated_at                                               DateTime?                                      @default(now()) @db.Timestamp(0)
+  users_coach_student_relationships_coach_user_idTousers   User                                           @relation("coach_student_relationships_coach_user_idTousers", fields: [coach_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "coach_student_relationships_ibfk_1")
+  users_coach_student_relationships_student_user_idTousers User                                           @relation("coach_student_relationships_student_user_idTousers", fields: [student_user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "coach_student_relationships_ibfk_2")
+
+  @@unique([coach_user_id, student_user_id], map: "unique_coach_student")
+  @@index([coach_user_id], map: "idx_coach")
+  @@index([status], map: "idx_status")
+  @@index([student_user_id], map: "idx_student")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model daily_checkins {
+  checkin_id       Int       @id @default(autoincrement())
+  user_id          Int
+  checkin_date     DateTime  @db.Date
+  quests_completed Int?      @default(0)
+  total_xp_earned  Int?      @default(0)
+  mood_rating      Int?
+  energy_level     Int?
+  notes            String?   @db.Text
+  created_at       DateTime? @default(now()) @db.Timestamp(0)
+  users            User      @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "daily_checkins_ibfk_1")
+
+  @@unique([user_id, checkin_date], map: "unique_user_date")
+  @@index([user_id, checkin_date(sort: Desc)], map: "idx_checkin_streak")
+  @@index([user_id, checkin_date], map: "idx_daily_checkin_user_date")
+  @@index([user_id, checkin_date], map: "idx_daily_checkins_user_date")
+  @@index([checkin_date], map: "idx_date")
+  @@index([user_id], map: "idx_user")
+}
+
+model fields_of_interest {
+  field_id          Int               @id @default(autoincrement())
+  field_name        String            @unique(map: "field_name") @db.VarChar(100)
+  field_icon        String?           @db.VarChar(10)
+  field_description String?           @db.Text
+  is_active         Boolean?          @default(true)
+  created_at        DateTime?         @default(now()) @db.Timestamp(0)
+  quest_templates   quest_templates[]
+  stats_template    stats_template[]
+}
+
+model level_progression {
+  progression_id       Int       @id @default(autoincrement())
+  user_id              Int
+  old_level            Int
+  new_level            Int
+  total_exp_at_levelup Int
+  achieved_at          DateTime? @default(now()) @db.Timestamp(0)
+  milestone_name       String?   @db.VarChar(255)
+  users                User      @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "level_progression_ibfk_1")
+
+  @@index([achieved_at], map: "idx_achieved_at")
+  @@index([user_id], map: "idx_user")
+}
+
+model media_uploads {
+  media_id    Int                      @id @default(autoincrement())
+  user_id     Int
+  media_type  media_uploads_media_type
+  file_url    String                   @db.VarChar(500)
+  file_name   String?                  @db.VarChar(255)
+  file_size   Int?
+  mime_type   String?                  @db.VarChar(100)
+  uploaded_at DateTime?                @default(now()) @db.Timestamp(0)
+  users       User                     @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "media_uploads_ibfk_1")
+
+  @@index([media_type], map: "idx_type")
+  @@index([user_id], map: "idx_user")
+}
+
+model notifications {
+  notification_id   Int                             @id @default(autoincrement())
+  user_id           Int
+  notification_type notifications_notification_type
+  title             String                          @db.VarChar(255)
+  message           String                          @db.Text
+  is_read           Boolean?                        @default(false)
+  action_url        String?                         @db.VarChar(500)
+  created_at        DateTime?                       @default(now()) @db.Timestamp(0)
+  expires_at        DateTime?                       @db.Timestamp(0)
+  users             User                            @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "notifications_ibfk_1")
+
+  @@index([created_at], map: "idx_created")
+  @@index([user_id, is_read], map: "idx_user_unread")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model quest_completion_history {
+  completion_id                                       Int                                           @id @default(autoincrement())
+  user_id                                             Int
+  quest_template_id                                   Int?
+  quest_type                                          String                                        @db.VarChar(20)
+  completed_at                                        DateTime?                                     @default(now()) @db.Timestamp(0)
+  xp_earned                                           Int
+  time_to_complete                                    Int?
+  difficulty_rating                                   Int?
+  notes                                               String?                                       @db.Text
+  verified_by_coach                                   Boolean?                                      @default(false)
+  coach_user_id                                       Int?
+  verification_method                                 quest_completion_history_verification_method? @default(manual)
+  proof_url                                           String?                                       @db.VarChar(500)
+  coach_feedback                                      coach_feedback[]
+  users_quest_completion_history_user_idTousers       User                                          @relation("quest_completion_history_user_idTousers", fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "quest_completion_history_ibfk_1")
+  quest_templates                                     quest_templates?                              @relation(fields: [quest_template_id], references: [quest_template_id], onUpdate: NoAction, map: "quest_completion_history_ibfk_2")
+  users_quest_completion_history_coach_user_idTousers User?                                         @relation("quest_completion_history_coach_user_idTousers", fields: [coach_user_id], references: [user_id], onUpdate: NoAction, map: "quest_completion_history_ibfk_3")
+
+  @@index([coach_user_id, verified_by_coach], map: "idx_coach_verification")
+  @@index([completed_at], map: "idx_completed_at")
+  @@index([user_id, completed_at], map: "idx_quest_completion_date")
+  @@index([user_id, completed_at], map: "idx_quest_completion_user_date")
+  @@index([user_id], map: "idx_user")
+  @@index([quest_template_id], map: "quest_template_id")
+}
+
+model quest_templates {
+  quest_template_id        Int                        @id @default(autoincrement())
+  field_name               String                     @db.VarChar(100)
+  quest_type               quest_templates_quest_type
+  quest_title              String                     @db.VarChar(255)
+  quest_description        String?                    @db.Text
+  base_xp                  Int
+  difficulty               quest_templates_difficulty
+  related_stat             String?                    @db.VarChar(100)
+  stat_increase            Int?                       @default(1)
+  is_active                Boolean?                   @default(true)
+  created_at               DateTime?                  @default(now()) @db.Timestamp(0)
+  quest_completion_history quest_completion_history[]
+  fields_of_interest       fields_of_interest         @relation(fields: [field_name], references: [field_name], onDelete: Cascade, onUpdate: NoAction, map: "quest_templates_ibfk_1")
+  user_active_quests       user_active_quests[]
+
+  @@index([field_name, quest_type], map: "idx_field_type")
+  @@index([related_stat], map: "idx_related_stat")
+}
+
+model stats_template {
+  stat_template_id   Int                @id @default(autoincrement())
+  field_name         String             @db.VarChar(100)
+  stat_name          String             @db.VarChar(100)
+  stat_icon          String?            @db.VarChar(10)
+  max_value          Int?               @default(100)
+  initial_value      Int?               @default(10)
+  stat_order         Int?               @default(0)
+  fields_of_interest fields_of_interest @relation(fields: [field_name], references: [field_name], onDelete: Cascade, onUpdate: NoAction, map: "stats_template_ibfk_1")
+
+  @@unique([field_name, stat_name], map: "unique_field_stat")
+  @@index([field_name], map: "idx_field")
+}
+
+model system_settings {
+  setting_id    Int                           @id @default(autoincrement())
+  setting_key   String                        @unique(map: "setting_key") @db.VarChar(100)
+  setting_value String?                       @db.Text
+  setting_type  system_settings_setting_type? @default(string)
+  description   String?                       @db.Text
+  updated_at    DateTime?                     @default(now()) @db.Timestamp(0)
+}
+
+model user_achievements {
+  user_achievement_id Int          @id @default(autoincrement())
+  user_id             Int
+  achievement_id      Int
+  earned_at           DateTime?    @default(now()) @db.Timestamp(0)
+  users               User         @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "user_achievements_ibfk_1")
+  achievements        achievements @relation(fields: [achievement_id], references: [achievement_id], onDelete: Cascade, onUpdate: NoAction, map: "user_achievements_ibfk_2")
+
+  @@unique([user_id, achievement_id], map: "unique_user_achievement")
+  @@index([achievement_id], map: "achievement_id")
+  @@index([user_id], map: "idx_user")
+}
+
+model user_active_quests {
+  active_quest_id   Int                           @id @default(autoincrement())
+  user_id           Int
+  quest_template_id Int
+  quest_type        user_active_quests_quest_type
+  assigned_date     DateTime                      @db.Date
+  expires_at        DateTime                      @db.Timestamp(0)
+  is_completed      Boolean?                      @default(false)
+  completed_at      DateTime?                     @db.Timestamp(0)
+  xp_earned         Int?
+  created_at        DateTime?                     @default(now()) @db.Timestamp(0)
+  users             User                          @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "user_active_quests_ibfk_1")
+  quest_templates   quest_templates               @relation(fields: [quest_template_id], references: [quest_template_id], onDelete: Cascade, onUpdate: NoAction, map: "user_active_quests_ibfk_2")
+
+  @@index([user_id, is_completed], map: "idx_active_quests_user")
+  @@index([expires_at], map: "idx_expires")
+  @@index([user_id, quest_type, expires_at], map: "idx_quest_user_type_expires")
+  @@index([user_id, assigned_date], map: "idx_user_date")
+  @@index([user_id, quest_type], map: "idx_user_type")
+  @@index([quest_template_id], map: "quest_template_id")
+}
+
+model user_custom_quests {
+  custom_quest_id   Int                           @id @default(autoincrement())
+  user_id           Int
+  quest_title       String                        @db.VarChar(255)
+  quest_description String?                       @db.Text
+  target_xp         Int                           @default(25)
+  difficulty        user_custom_quests_difficulty @default(medium)
+  related_stat      String?                       @db.VarChar(100)
+  is_active         Boolean?                      @default(true)
+  created_at        DateTime?                     @default(now()) @db.Timestamp(0)
+  updated_at        DateTime?                     @default(now()) @db.Timestamp(0)
+  users             User                          @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "user_custom_quests_ibfk_1")
+
+  @@index([user_id, is_active], map: "idx_user_active")
+}
+
+model user_sessions {
+  session_id    String                      @id @db.VarChar(255)
+  user_id       Int
+  refresh_token String?                     @db.VarChar(500)
+  expires_at    DateTime                    @db.Timestamp(0)
+  created_at    DateTime?                   @default(now()) @db.Timestamp(0)
+  last_activity DateTime?                   @default(now()) @db.Timestamp(0)
+  ip_address    String?                     @db.VarChar(45)
+  user_agent    String?                     @db.Text
+  is_active     Boolean?                    @default(true)
+  login_method  user_sessions_login_method? @default(web)
+  device_info   String?                     @db.Text
+  users         User                        @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "user_sessions_ibfk_1")
+
+  @@index([expires_at], map: "idx_expires")
+  @@index([user_id], map: "idx_user")
+  @@index([user_id, is_active, expires_at], map: "idx_user_sessions_active")
+  @@index([expires_at], map: "idx_user_sessions_expires")
+}
+
+model user_stats {
+  user_stat_id  Int       @id @default(autoincrement())
+  user_id       Int
+  stat_name     String    @db.VarChar(100)
+  stat_icon     String?   @db.VarChar(10)
+  current_value Int?      @default(10)
+  max_value     Int?      @default(100)
+  last_updated  DateTime? @default(now()) @db.Timestamp(0)
+  users         User      @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction, map: "user_stats_ibfk_1")
+
+  @@unique([user_id, stat_name], map: "unique_user_stat")
+  @@index([user_id], map: "idx_user")
+  @@index([user_id], map: "idx_user_stats_user")
+}
+
+enum UserType {
+  adventurer
+  coach
+  admin
+}
+
+enum AdminAccessLevel {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+}
+
+enum CommitmentLevel {
+  thirty_minutes   @map("30_minutes")
+  one_hour         @map("1_hour")
+  two_hours        @map("2_hours")
+  three_plus_hours @map("3_plus_hours")
+}
+
+enum ExperienceLevel {
+  beginner
+  some_experience
+  intermediate
+  advanced
+}
+
+enum VerificationStatus {
+  pending
+  verified
+  rejected
+}
+
+enum activity_logs_activity_type {
+  login
+  quest_complete
+  level_up
+  stat_increase
+  achievement_earned
+  profile_update
+}
+
+enum media_uploads_media_type {
+  profile_photo
+  quest_proof
+  achievement_badge
+}
+
+enum notifications_notification_type {
+  quest_reminder
+  level_up
+  achievement
+  coach_feedback
+  streak_warning
+  system
+}
+
+enum quest_templates_quest_type {
+  daily
+  weekly
+  special
+  main
+}
+
+enum coach_feedback_feedback_type {
+  daily
+  weekly
+  quest
+  general
+  guidance
+}
+
+enum coach_student_relationships_status {
+  pending
+  active
+  terminated
+}
+
+enum system_settings_setting_type {
+  string
+  number
+  boolean
+  json
+}
+
+enum user_active_quests_quest_type {
+  daily
+  weekly
+  special
+  main
+}
+
+enum achievements_achievement_type {
+  streak
+  level
+  quest
+  stat
+  special
+}
+
+enum coach_student_relationships_relationship_type {
+  primary
+  secondary
+  observer
+}
+
+enum user_custom_quests_difficulty {
+  easy
+  medium
+  hard
+}
+
+enum quest_templates_difficulty {
+  easy
+  medium
+  hard
+}
+
+enum user_sessions_login_method {
+  web
+  mobile
+  api
+}
+
+enum quest_completion_history_verification_method {
+  manual
+  photo
+  video
+  gps
+  app_integration
+}
