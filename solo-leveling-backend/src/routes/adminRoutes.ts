@@ -9,7 +9,8 @@ import {
   toggleUserStatus,
   getAllQuests,
   getAdminLogs,
-  getDatabaseStats
+  getDatabaseStats,
+  getAllQuestsDetailed
 } from '../controllers/adminController';
 import { authenticate, authorizeRole } from '../middleware/auth';
 
@@ -33,6 +34,7 @@ router.patch('/users/:user_id/toggle-status', toggleUserStatus);
 
 // ==================== QUEST MANAGEMENT ====================
 router.get('/quests', getAllQuests);
+router.get('/quests', getAllQuestsDetailed);
 
 // ==================== ADMIN LOGS ====================
 router.get('/logs', getAdminLogs);

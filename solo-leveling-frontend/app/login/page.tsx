@@ -477,7 +477,7 @@ export default function LoginPage() {
   <div style={{ fontSize: '14px', color: '#d1d5db', lineHeight: '1.6' }}>
     <p><strong>Adventurer:</strong> test@example.com / password123</p>
     <p><strong>Coach:</strong> coach@example.com / password123</p>
-    <p><strong>Admin:</strong> admin@sololeveling.com / admin123</p>
+    <p><strong>Admin:</strong> admin@sololeveling.com / Admin@123456</p>
   </div>
 </div>
 

@@ -654,13 +654,50 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       })
     ]);
 
-    // Try to get quest count, but don't fail if table doesn't exist
+    // FIXED: Get total quests count using MySQL pool instead of Prisma
     let totalQuests = 0;
     try {
-      const questResult = await prisma.$queryRaw`SELECT COUNT(*) as count FROM active_quests`;
-      totalQuests = (questResult as any)[0]?.count || 0;
-    } catch (questError) {
-      console.warn('⚠️ active_quests table not found, returning 0 quests');
+      const connection = await pool.getConnection();
+      
+      // Try multiple quest-related tables
+      try {
+        // First try active_quests (current quests)
+        const [activeQuestsResult]: any = await connection.execute(
+          'SELECT COUNT(*) as count FROM active_quests'
+        );
+        const activeQuests = activeQuestsResult[0]?.count || 0;
+        
+        // Then try quest_completion_history (completed quests)
+        const [completedQuestsResult]: any = await connection.execute(
+          'SELECT COUNT(*) as count FROM quest_completion_history'
+        );
+        const completedQuests = completedQuestsResult[0]?.count || 0;
+        
+        // Total quests = active + completed
+        totalQuests = activeQuests + completedQuests;
+        
+        console.log(`✅ Quest Stats: ${activeQuests} active, ${completedQuests} completed, ${totalQuests} total`);
+        
+      } catch (questError: any) {
+        console.warn('⚠️ Quest tables query failed:', questError.message);
+        
+        // Fallback: Try to count from quest_templates (templates available)
+        try {
+          const [templatesResult]: any = await connection.execute(
+            'SELECT COUNT(*) as count FROM quest_templates'
+          );
+          totalQuests = templatesResult[0]?.count || 0;
+          console.log(`✅ Using quest templates count: ${totalQuests}`);
+        } catch (templateError) {
+          console.warn('⚠️ No quest data available, returning 0');
+          totalQuests = 0;
+        }
+      }
+      
+      connection.release();
+      
+    } catch (connectionError) {
+      console.error('❌ Database connection error for quests:', connectionError);
       totalQuests = 0;
     }
 
@@ -673,12 +710,12 @@ export const getDashboardStats = async (req: Request, res: Response) => {
           admins: adminCount
         },
         activeUsers,
-        totalQuests
-      },
-      recentRegistrations
+        totalQuests, // This should now show real data!
+        recentRegistrations
+      }
     });
   } catch (error) {
-    console.error('Dashboard stats error:', error);
+    console.error('Get dashboard stats error:', error);
     res.status(500).json({ error: 'Failed to fetch dashboard statistics' });
   }
 };
@@ -1186,6 +1223,78 @@ async function updateAdminLastAction(admin_user_id: number, action: string) {
     console.error('Failed to update admin last action:', error);
   }
 }
+export const getAllQuestsDetailed = async (req: Request, res: Response) => {
+  try {
+    const { page = 1, limit = 15, status } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const connection = await pool.getConnection();
+
+    try {
+      let whereClause = '';
+      let countWhereClause = '';
+      
+      if (status === 'active') {
+        whereClause = 'WHERE aq.is_completed = FALSE';
+        countWhereClause = 'WHERE is_completed = FALSE';
+      } else if (status === 'completed') {
+        whereClause = 'WHERE aq.is_completed = TRUE';
+        countWhereClause = 'WHERE is_completed = TRUE';
+      }
+
+      const [quests]: any = await connection.execute(`
+        SELECT 
+          aq.active_quest_id,
+          aq.user_id,
+          aq.quest_title,
+          aq.quest_description,
+          aq.base_xp,
+          aq.difficulty,
+          aq.is_completed,
+          aq.completed_at,
+          aq.created_at,
+          u.username,
+          u.email
+        FROM active_quests aq
+        LEFT JOIN users u ON aq.user_id = u.user_id
+        ${whereClause}
+        ORDER BY aq.created_at DESC
+        LIMIT ${Number(limit)} OFFSET ${skip}
+      `);
+
+      const [countResult]: any = await connection.execute(`
+        SELECT COUNT(*) as total FROM active_quests
+        ${countWhereClause}
+      `);
+      const total = countResult[0]?.total || 0;
+
+      connection.release();
+
+      res.json({
+        quests,
+        pagination: {
+          total,
+          page: Number(page),
+          limit: Number(limit),
+          pages: Math.ceil(total / Number(limit))
+        }
+      });
+
+    } catch (queryError) {
+      connection.release();
+      console.error('Quest query error:', queryError);
+      res.json({
+        quests: [],
+        pagination: { total: 0, page: 1, limit: 15, pages: 0 }
+      });
+    }
+  } catch (error) {
+    console.error('Get all quests error:', error);
+    res.status(500).json({ error: 'Failed to fetch quests' });
+  }
+};
+
+
 
 
 
@@ -3911,7 +4020,8 @@ import {
   toggleUserStatus,
   getAllQuests,
   getAdminLogs,
-  getDatabaseStats
+  getDatabaseStats,
+  getAllQuestsDetailed
 } from '../controllers/adminController';
 import { authenticate, authorizeRole } from '../middleware/auth';
 
@@ -3935,6 +4045,7 @@ router.patch('/users/:user_id/toggle-status', toggleUserStatus);
 
 // ==================== QUEST MANAGEMENT ====================
 router.get('/quests', getAllQuests);
+router.get('/quests', getAllQuestsDetailed);
 
 // ==================== ADMIN LOGS ====================
 router.get('/logs', getAdminLogs);
