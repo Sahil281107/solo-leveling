@@ -22,6 +22,7 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<any>(null);
   const [currentBg, setCurrentBg] = useState(0);
   const [showQuestModal, setShowQuestModal] = useState(false); // NEW: Quest modal state
+  const [userFilter, setUserFilter] = useState<string>('all');
 
   // Solo Leveling themed backgrounds - SAME AS COACH DASHBOARD
   const backgrounds = [
@@ -66,6 +67,21 @@ export default function AdminDashboard() {
       toast.error('Failed to load dashboard statistics');
     }
   };
+
+  const handleUsersClick = () => {
+    setUserFilter('all');
+  setActiveTab('users');
+};
+
+const handleAdventurersClick = () => {
+   setUserFilter('adventurer');
+  setActiveTab('users'); // Navigate to user management
+};
+
+const handleCoachesClick = () => {
+  setUserFilter('coach');
+  setActiveTab('users');
+};
 
   const handleLogout = async () => {
     await logout();
@@ -419,10 +435,13 @@ export default function AdminDashboard() {
               stats={stats} 
               onRefresh={fetchDashboardStats}
               onQuestsClick={() => setShowQuestModal(true)}
+              onUsersClick={handleUsersClick}
+              onAdventurersClick={handleAdventurersClick} 
+              onCoachesClick={handleCoachesClick}
             />
           </div>
         )}
-          {activeTab === 'users' && <UserManagement />}
+          {activeTab === 'users' && <UserManagement initialFilter={userFilter} />}
           {activeTab === 'logs' && <AdminLogs />}
           {activeTab === 'settings' && (
             <div className="glass rounded-xl p-8 text-center">

@@ -47,6 +47,7 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<any>(null);
   const [currentBg, setCurrentBg] = useState(0);
   const [showQuestModal, setShowQuestModal] = useState(false); // NEW: Quest modal state
+  const [userFilter, setUserFilter] = useState<string>('all');
 
   // Solo Leveling themed backgrounds - SAME AS COACH DASHBOARD
   const backgrounds = [
@@ -91,6 +92,21 @@ export default function AdminDashboard() {
       toast.error('Failed to load dashboard statistics');
     }
   };
+
+  const handleUsersClick = () => {
+    setUserFilter('all');
+  setActiveTab('users');
+};
+
+const handleAdventurersClick = () => {
+   setUserFilter('adventurer');
+  setActiveTab('users'); // Navigate to user management
+};
+
+const handleCoachesClick = () => {
+  setUserFilter('coach');
+  setActiveTab('users');
+};
 
   const handleLogout = async () => {
     await logout();
@@ -444,10 +460,13 @@ export default function AdminDashboard() {
               stats={stats} 
               onRefresh={fetchDashboardStats}
               onQuestsClick={() => setShowQuestModal(true)}
+              onUsersClick={handleUsersClick}
+              onAdventurersClick={handleAdventurersClick} 
+              onCoachesClick={handleCoachesClick}
             />
           </div>
         )}
-          {activeTab === 'users' && <UserManagement />}
+          {activeTab === 'users' && <UserManagement initialFilter={userFilter} />}
           {activeTab === 'logs' && <AdminLogs />}
           {activeTab === 'settings' && (
             <div className="glass rounded-xl p-8 text-center">
@@ -6848,10 +6867,13 @@ import { Shield, Users, TrendingUp, Award, Activity, Clock, Sparkles, Zap } from
 interface AdminStatsProps {
   stats: any;
   onRefresh: () => void;
-  onQuestsClick?: () => void; // NEW: Add click handler for quests
+  onQuestsClick?: () => void; 
+  onUsersClick?: () => void;
+  onAdventurersClick?: () => void;
+  onCoachesClick?: () => void;
 }
 
-export default function AdminStats({ stats, onRefresh, onQuestsClick }: AdminStatsProps) {
+export default function AdminStats({ stats, onRefresh, onQuestsClick,  onUsersClick, onAdventurersClick, onCoachesClick }: AdminStatsProps) {
   if (!stats) {
     return (
       <div style={{
@@ -6883,6 +6905,7 @@ export default function AdminStats({ stats, onRefresh, onQuestsClick }: AdminSta
       icon: Users,
       color: '#9333ea',
       gradient: 'linear-gradient(135deg, #9333ea 0%, #ec4899 100%)',
+      onClick: onUsersClick ,
       subtitle: `${stats.activeUsers || 0} active`,
       glow: 'rgba(147, 51, 234, 0.3)'
     },
@@ -6929,14 +6952,26 @@ export default function AdminStats({ stats, onRefresh, onQuestsClick }: AdminSta
           
           return (
             <div
-              key={index}
-              onClick={() => {
-                console.log('Card clicked:', stat.title); // DEBUG
-                if (stat.title === 'Total Quests' && onQuestsClick) {
-                  console.log('Opening quest modal...'); // DEBUG
-                  onQuestsClick();
-                }
-              }}
+  key={index}
+  onClick={() => {
+    console.log('Card clicked:', stat.title); 
+    if (stat.title === 'Total Quests' && onQuestsClick) {
+      console.log('Opening quest modal...'); 
+      onQuestsClick();
+    }
+    if (stat.title === 'Total Users' && onUsersClick) {  
+      console.log('Opening user management...'); 
+      onUsersClick();  
+    }  
+    if (stat.title === 'Adventurers' && onAdventurersClick) {  
+    console.log('Opening adventurers list...');              
+    onAdventurersClick();                                     
+  }   
+    if (stat.title === 'Coaches' && onCoachesClick) {        
+    console.log('Opening coaches list...');                 
+    onCoachesClick();                                        
+  }         
+  }}
               style={{
                 background: 'rgba(0, 0, 0, 0.4)',
                 backdropFilter: 'blur(20px)',
@@ -6946,7 +6981,7 @@ export default function AdminStats({ stats, onRefresh, onQuestsClick }: AdminSta
                 position: 'relative',
                 overflow: 'hidden',
                 transition: 'all 0.3s ease',
-                cursor: stat.title === 'Total Quests' ? 'pointer' : 'default'
+                cursor: (stat.title === 'Total Quests' || stat.title === 'Total Users' || stat.title === 'Adventurers' || stat.title === 'Coaches') ? 'pointer' : 'default'
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = 'translateY(-4px)';
@@ -7098,6 +7133,7 @@ export default function AdminStats({ stats, onRefresh, onQuestsClick }: AdminSta
     </div>
   );
 }
+
 
 
 
@@ -7679,15 +7715,24 @@ import {
   ChevronLeft, ChevronRight, User, Crown, Shield, Sword
 } from 'lucide-react';
 
-export default function UserManagement() {
+interface UserManagementProps {
+  initialFilter?: string;
+}
+
+export default function UserManagement({ initialFilter = 'all' }: UserManagementProps) {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('all');
+  const [filterType, setFilterType] = useState(initialFilter);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [userToDelete, setUserToDelete] = useState<any>(null);
+
+  useEffect(() => {
+  setFilterType(initialFilter || 'all');
+  setCurrentPage(1); // Reset to first page when filter changes
+}, [initialFilter]);
 
   useEffect(() => {
     fetchUsers();
@@ -8145,6 +8190,7 @@ export default function UserManagement() {
     </div>
   );
 }
+
 
 
 

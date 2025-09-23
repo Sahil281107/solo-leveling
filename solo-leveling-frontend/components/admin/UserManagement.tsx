@@ -7,15 +7,24 @@ import {
   ChevronLeft, ChevronRight, User, Crown, Shield, Sword
 } from 'lucide-react';
 
-export default function UserManagement() {
+interface UserManagementProps {
+  initialFilter?: string;
+}
+
+export default function UserManagement({ initialFilter = 'all' }: UserManagementProps) {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('all');
+  const [filterType, setFilterType] = useState(initialFilter);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [userToDelete, setUserToDelete] = useState<any>(null);
+
+  useEffect(() => {
+  setFilterType(initialFilter || 'all');
+  setCurrentPage(1); // Reset to first page when filter changes
+}, [initialFilter]);
 
   useEffect(() => {
     fetchUsers();

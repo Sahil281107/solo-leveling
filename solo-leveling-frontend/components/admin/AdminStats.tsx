@@ -4,10 +4,13 @@ import { Shield, Users, TrendingUp, Award, Activity, Clock, Sparkles, Zap } from
 interface AdminStatsProps {
   stats: any;
   onRefresh: () => void;
-  onQuestsClick?: () => void; // NEW: Add click handler for quests
+  onQuestsClick?: () => void; 
+  onUsersClick?: () => void;
+  onAdventurersClick?: () => void;
+  onCoachesClick?: () => void;
 }
 
-export default function AdminStats({ stats, onRefresh, onQuestsClick }: AdminStatsProps) {
+export default function AdminStats({ stats, onRefresh, onQuestsClick,  onUsersClick, onAdventurersClick, onCoachesClick }: AdminStatsProps) {
   if (!stats) {
     return (
       <div style={{
@@ -39,6 +42,7 @@ export default function AdminStats({ stats, onRefresh, onQuestsClick }: AdminSta
       icon: Users,
       color: '#9333ea',
       gradient: 'linear-gradient(135deg, #9333ea 0%, #ec4899 100%)',
+      onClick: onUsersClick ,
       subtitle: `${stats.activeUsers || 0} active`,
       glow: 'rgba(147, 51, 234, 0.3)'
     },
@@ -85,14 +89,26 @@ export default function AdminStats({ stats, onRefresh, onQuestsClick }: AdminSta
           
           return (
             <div
-              key={index}
-              onClick={() => {
-                console.log('Card clicked:', stat.title); // DEBUG
-                if (stat.title === 'Total Quests' && onQuestsClick) {
-                  console.log('Opening quest modal...'); // DEBUG
-                  onQuestsClick();
-                }
-              }}
+  key={index}
+  onClick={() => {
+    console.log('Card clicked:', stat.title); 
+    if (stat.title === 'Total Quests' && onQuestsClick) {
+      console.log('Opening quest modal...'); 
+      onQuestsClick();
+    }
+    if (stat.title === 'Total Users' && onUsersClick) {  
+      console.log('Opening user management...'); 
+      onUsersClick();  
+    }  
+    if (stat.title === 'Adventurers' && onAdventurersClick) {  
+    console.log('Opening adventurers list...');              
+    onAdventurersClick();                                     
+  }   
+    if (stat.title === 'Coaches' && onCoachesClick) {        
+    console.log('Opening coaches list...');                 
+    onCoachesClick();                                        
+  }         
+  }}
               style={{
                 background: 'rgba(0, 0, 0, 0.4)',
                 backdropFilter: 'blur(20px)',
@@ -102,7 +118,7 @@ export default function AdminStats({ stats, onRefresh, onQuestsClick }: AdminSta
                 position: 'relative',
                 overflow: 'hidden',
                 transition: 'all 0.3s ease',
-                cursor: stat.title === 'Total Quests' ? 'pointer' : 'default'
+                cursor: (stat.title === 'Total Quests' || stat.title === 'Total Users' || stat.title === 'Adventurers' || stat.title === 'Coaches') ? 'pointer' : 'default'
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = 'translateY(-4px)';
