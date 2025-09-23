@@ -4320,6 +4320,30 @@ export default function SignupPage() {
     experience_level: 'beginner'
   });
 
+const [passwordChecks, setPasswordChecks] = useState({
+  length: false,
+  uppercase: false,
+  lowercase: false,
+  number: false,
+  specialChar: false
+});
+const validatePasswordStrength = (password: string) => {
+  const checks = {
+    length: password.length >= 6,
+    uppercase: /[A-Z]/.test(password),
+    lowercase: /[a-z]/.test(password),
+    number: /[0-9]/.test(password),
+    specialChar: (password.match(/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/g) || []).length === 1
+  };
+  
+  return checks;
+};
+const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const newPassword = e.target.value;
+  setFormData({...formData, password: newPassword});
+  setPasswordChecks(validatePasswordStrength(newPassword));
+};
+
   // Solo Leveling backgrounds
   const backgrounds = [
     '/images/backgrounds/solo-leveling-1.jpg',
@@ -4380,15 +4404,34 @@ export default function SignupPage() {
         toast.error('Please enter a valid email');
         return false;
       }
-      if (formData.password.length < 6) {
-        toast.error('Password must be at least 6 characters');
-        return false;
-      }
-      if (formData.password !== formData.confirmPassword) {
-        toast.error('Passwords do not match!');
-        return false;
-      }
-      return true;
+
+      const checks = validatePasswordStrength(formData.password);
+    if (!checks.length) {
+      toast.error('Password must be at least 6 characters');
+      return false;
+    }
+    if (!checks.uppercase) {
+      toast.error('Password must contain at least one uppercase letter');
+      return false;
+    }
+    if (!checks.lowercase) {
+      toast.error('Password must contain at least one lowercase letter');
+      return false;
+    }
+    if (!checks.number) {
+      toast.error('Password must contain at least one number');
+      return false;
+    }
+    if (!checks.specialChar) {
+      toast.error('Password must contain exactly one special character');
+      return false;
+    }
+    
+    if (formData.password !== formData.confirmPassword) {
+      toast.error('Passwords do not match!');
+      return false;
+    }
+    return true;
     } else if (stepNumber === 2) {
       if (!formData.full_name || !formData.field_of_interest) {
         toast.error('Please complete your profile');
@@ -4689,38 +4732,103 @@ export default function SignupPage() {
                   {/* Password */}
                   <div>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px', color: '#e9d5ff' }}>
-                      <Lock size={18} />
-                      Password
-                    </label>
-                    <input
-                      ref={passwordRef}
-                      type="password"
-                      required
-                      style={{
-                        width: '100%',
-                        padding: '14px 20px',
-                        background: 'rgba(0, 0, 0, 0.4)',
-                        border: '2px solid rgba(147, 51, 234, 0.3)',
-                        borderRadius: '12px',
-                        color: '#fff',
-                        fontSize: '16px',
-                        transition: 'all 0.3s ease',
-                      }}
-                      value={formData.password}
-                      onChange={(e) => setFormData({...formData, password: e.target.value})}
-                      onKeyPress={(e) => handleKeyPress(e, confirmPasswordRef)}
-                      placeholder="••••••••"
-                      onFocus={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(147, 51, 234, 0.6)';
-                        e.currentTarget.style.background = 'rgba(147, 51, 234, 0.1)';
-                      }}
-                      onBlur={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(147, 51, 234, 0.3)';
-                        e.currentTarget.style.background = 'rgba(0, 0, 0, 0.4)';
+    <Lock size={18} />
+    Password
+  </label>
+  <input
+    ref={passwordRef}
+    type="password"
+    required
+    style={{
+      width: '100%',
+      padding: '14px 20px',
+      background: 'rgba(0, 0, 0, 0.4)',
+      border: '2px solid rgba(147, 51, 234, 0.3)',
+      borderRadius: '12px',
+      color: '#fff',
+      fontSize: '16px',
+      transition: 'all 0.3s ease',
+    }}
+    value={formData.password}
+    onChange={handlePasswordChange}  // CHANGED: Use new handler
+    onKeyPress={(e) => handleKeyPress(e, confirmPasswordRef)}
+    placeholder="••••••••"
+    onFocus={(e) => {
+      e.currentTarget.style.borderColor = 'rgba(147, 51, 234, 0.6)';
+      e.currentTarget.style.background = 'rgba(147, 51, 234, 0.1)';
+    }}
+    onBlur={(e) => {
+      e.currentTarget.style.borderColor = 'rgba(147, 51, 234, 0.3)';
+      e.currentTarget.style.background = 'rgba(0, 0, 0, 0.4)';
                       }}
                     />
+                    {/* Password Strength Indicator */}
+  {formData.password && (
+    <div style={{
+      marginTop: '12px',
+      padding: '12px',
+      background: 'rgba(0, 0, 0, 0.3)',
+      borderRadius: '8px',
+      border: '1px solid rgba(147, 51, 234, 0.2)'
+    }}>
+      <p style={{ 
+        fontSize: '12px', 
+        color: '#a855f7', 
+        marginBottom: '8px',
+        fontWeight: '600'
+      }}>
+        Password Requirements:
+      </p>
+      <div style={{ fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        <div style={{ 
+          color: passwordChecks.length ? '#10b981' : '#6b7280',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}>
+          <span>{passwordChecks.length ? '✓' : '○'}</span>
+          <span>At least 6 characters</span>
+        </div>
+        <div style={{ 
+          color: passwordChecks.uppercase ? '#10b981' : '#6b7280',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}>
+          <span>{passwordChecks.uppercase ? '✓' : '○'}</span>
+          <span>One uppercase letter (A-Z)</span>
+        </div>
+        <div style={{ 
+          color: passwordChecks.lowercase ? '#10b981' : '#6b7280',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}>
+          <span>{passwordChecks.lowercase ? '✓' : '○'}</span>
+          <span>One lowercase letter (a-z)</span>
+        </div>
+        <div style={{ 
+          color: passwordChecks.number ? '#10b981' : '#6b7280',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}>
+          <span>{passwordChecks.number ? '✓' : '○'}</span>
+          <span>One number (0-9)</span>
+        </div>
+        <div style={{ 
+          color: passwordChecks.specialChar ? '#10b981' : '#6b7280',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}>
+          <span>{passwordChecks.specialChar ? '✓' : '○'}</span>
+          <span>Exactly one special character (@, #, $, etc.)</span>
+        </div>
+      </div>
+    </div>
+  )}
                   </div>
-
                   {/* Confirm Password */}
                   <div>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px', color: '#e9d5ff' }}>
@@ -5199,7 +5307,6 @@ export default function SignupPage() {
     </div>
   );
 } 
-
 
 
 

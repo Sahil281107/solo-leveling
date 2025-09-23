@@ -33,7 +33,6 @@ router.delete('/users/:user_id', deleteUser);
 router.patch('/users/:user_id/toggle-status', toggleUserStatus);
 
 // ==================== QUEST MANAGEMENT ====================
-router.get('/quests', getAllQuests);
 router.get('/quests', getAllQuestsDetailed);
 
 // ==================== ADMIN LOGS ====================

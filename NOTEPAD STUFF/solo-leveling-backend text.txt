@@ -1235,62 +1235,73 @@ export const getAllQuestsDetailed = async (req: Request, res: Response) => {
       let countWhereClause = '';
       
       if (status === 'active') {
-        whereClause = 'WHERE aq.is_completed = FALSE';
+        whereClause = 'WHERE uaq.is_completed = FALSE';
         countWhereClause = 'WHERE is_completed = FALSE';
       } else if (status === 'completed') {
-        whereClause = 'WHERE aq.is_completed = TRUE';
+        whereClause = 'WHERE uaq.is_completed = TRUE';
         countWhereClause = 'WHERE is_completed = TRUE';
       }
 
+      // ✅ Using user_active_quests (the main table)
       const [quests]: any = await connection.execute(`
         SELECT 
-          aq.active_quest_id,
-          aq.user_id,
-          aq.quest_title,
-          aq.quest_description,
-          aq.base_xp,
-          aq.difficulty,
-          aq.is_completed,
-          aq.completed_at,
-          aq.created_at,
+          uaq.active_quest_id,
+          uaq.user_id,
+          uaq.quest_template_id,
+          uaq.quest_type,
+          uaq.assigned_date,
+          uaq.expires_at,
+          uaq.is_completed,
+          uaq.completed_at,
+          uaq.xp_earned,
+          uaq.created_at,
+          qt.quest_title,
+          qt.quest_description,
+          qt.base_xp,
+          qt.difficulty,
+          qt.related_stat,
           u.username,
-          u.email
-        FROM active_quests aq
-        LEFT JOIN users u ON aq.user_id = u.user_id
+          u.email,
+          ap.full_name,
+          ap.field_of_interest
+        FROM user_active_quests uaq
+        LEFT JOIN quest_templates qt ON uaq.quest_template_id = qt.quest_template_id
+        LEFT JOIN users u ON uaq.user_id = u.user_id
+        LEFT JOIN adventurer_profiles ap ON uaq.user_id = ap.user_id
         ${whereClause}
-        ORDER BY aq.created_at DESC
+        ORDER BY uaq.created_at DESC
         LIMIT ${Number(limit)} OFFSET ${skip}
       `);
 
-      const [countResult]: any = await connection.execute(`
-        SELECT COUNT(*) as total FROM active_quests
+      const [totalResult]: any = await connection.execute(`
+        SELECT COUNT(*) as count 
+        FROM user_active_quests
         ${countWhereClause}
       `);
-      const total = countResult[0]?.total || 0;
+      
+      const total = totalResult[0].count;
 
       connection.release();
 
       res.json({
         quests,
         pagination: {
-          total,
+          total: Number(total),
           page: Number(page),
           limit: Number(limit),
-          pages: Math.ceil(total / Number(limit))
+          pages: Math.ceil(Number(total) / Number(limit))
         }
       });
-
-    } catch (queryError) {
+    } catch (error) {
       connection.release();
-      console.error('Quest query error:', queryError);
-      res.json({
-        quests: [],
-        pagination: { total: 0, page: 1, limit: 15, pages: 0 }
-      });
+      throw error;
     }
   } catch (error) {
-    console.error('Get all quests error:', error);
-    res.status(500).json({ error: 'Failed to fetch quests' });
+    console.error('Get quests detailed error:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch quests',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 };
 
@@ -1329,6 +1340,37 @@ const generateSessionId = (): string => {
   return crypto.randomBytes(32).toString('hex');
 };
 
+// Password validation function
+const validatePassword = (password: string): { isValid: boolean; message?: string } => {
+  // Check minimum length (at least 6 characters)
+  if (password.length < 6) {
+    return { isValid: false, message: 'Password must be at least 6 characters long' };
+  }
+
+  // Check for at least one uppercase letter
+  if (!/[A-Z]/.test(password)) {
+    return { isValid: false, message: 'Password must contain at least one uppercase letter' };
+  }
+
+  // Check for at least one lowercase letter
+  if (!/[a-z]/.test(password)) {
+    return { isValid: false, message: 'Password must contain at least one lowercase letter' };
+  }
+
+  // Check for at least one number
+  if (!/[0-9]/.test(password)) {
+    return { isValid: false, message: 'Password must contain at least one number' };
+  }
+
+  // Check for exactly one special character
+  const specialCharCount = (password.match(/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/g) || []).length;
+  if (specialCharCount !== 1) {
+    return { isValid: false, message: 'Password must contain exactly one special character (e.g., @, #, $, etc.)' };
+  }
+
+  return { isValid: true };
+};
+
 export const signup = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   
@@ -1346,6 +1388,12 @@ export const signup = async (req: Request, res: Response) => {
       experience_level 
     } = req.body;
     
+const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
+      await connection.rollback();
+      return res.status(400).json({ error: passwordValidation.message });
+    }
+
     // Check if user exists
     const [existing]: any = await connection.execute(
       'SELECT user_id FROM users WHERE email = ? OR username = ?',
@@ -4044,7 +4092,6 @@ router.delete('/users/:user_id', deleteUser);
 router.patch('/users/:user_id/toggle-status', toggleUserStatus);
 
 // ==================== QUEST MANAGEMENT ====================
-router.get('/quests', getAllQuests);
 router.get('/quests', getAllQuestsDetailed);
 
 // ==================== ADMIN LOGS ====================

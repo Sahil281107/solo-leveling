@@ -292,10 +292,10 @@ const handleCoachesClick = () => {
                 borderRadius: '10px',
                 border: '1px solid rgba(147, 51, 234, 0.3)'
               }}>
-                <p style={{ fontSize: '14px', color: '#9ca3af' }}>
-                  Welcome, <span style={{ color: '#fff', fontWeight: '600' }}>{user?.username}</span>
+                <p style={{ fontSize: '14px', color: '#a855f7', fontWeight: '700' }}>
+                  WELCOME {user?.name?.toUpperCase()} 
                 </p>
-                <p style={{ fontSize: '11px', color: '#a855f7', fontWeight: '600' }}>
+                <p style={{ fontSize: '11px', color: '#a855f7', fontWeight: '700' }}>
                   {user?.profile?.access_level || 'SUPER ADMIN'}
                 </p>
               </div>

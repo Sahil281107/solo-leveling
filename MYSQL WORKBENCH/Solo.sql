@@ -5,7 +5,13 @@
 -- Create Database
 CREATE DATABASE IF NOT EXISTS solo_leveling_system;
 USE solo_leveling_system;
+SHOW TABLES;
+SELECT COUNT(*) as count FROM user_active_quests;
+SELECT COUNT(*) as count FROM active_quests;
 
+-- See sample data from each table
+SELECT * FROM user_active_quests LIMIT 5;
+SELECT * FROM active_quests LIMIT 5;
 -- =====================================================
 -- 1. USERS TABLE (Core user authentication)
 -- =====================================================
@@ -628,3 +634,6 @@ SELECT user_id, username, profile_photo_url FROM users;
 
 ALTER TABLE coach_feedback 
 MODIFY COLUMN feedback_type ENUM('daily', 'weekly', 'quest', 'general', 'guidance') NOT NULL;
+
+SELECT * FROM achievements ORDER BY achievement_id
+

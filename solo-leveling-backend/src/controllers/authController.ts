@@ -26,6 +26,37 @@ const generateSessionId = (): string => {
   return crypto.randomBytes(32).toString('hex');
 };
 
+// Password validation function
+const validatePassword = (password: string): { isValid: boolean; message?: string } => {
+  // Check minimum length (at least 6 characters)
+  if (password.length < 6) {
+    return { isValid: false, message: 'Password must be at least 6 characters long' };
+  }
+
+  // Check for at least one uppercase letter
+  if (!/[A-Z]/.test(password)) {
+    return { isValid: false, message: 'Password must contain at least one uppercase letter' };
+  }
+
+  // Check for at least one lowercase letter
+  if (!/[a-z]/.test(password)) {
+    return { isValid: false, message: 'Password must contain at least one lowercase letter' };
+  }
+
+  // Check for at least one number
+  if (!/[0-9]/.test(password)) {
+    return { isValid: false, message: 'Password must contain at least one number' };
+  }
+
+  // Check for exactly one special character
+  const specialCharCount = (password.match(/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/g) || []).length;
+  if (specialCharCount !== 1) {
+    return { isValid: false, message: 'Password must contain exactly one special character (e.g., @, #, $, etc.)' };
+  }
+
+  return { isValid: true };
+};
+
 export const signup = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   
@@ -43,6 +74,12 @@ export const signup = async (req: Request, res: Response) => {
       experience_level 
     } = req.body;
     
+const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
+      await connection.rollback();
+      return res.status(400).json({ error: passwordValidation.message });
+    }
+
     // Check if user exists
     const [existing]: any = await connection.execute(
       'SELECT user_id FROM users WHERE email = ? OR username = ?',
