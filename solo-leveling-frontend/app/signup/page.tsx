@@ -7,9 +7,31 @@ import { signup } from '@/lib/auth';
 import { Upload, User, Mail, Lock, Target, Clock, Star, Camera, X, ArrowLeft, ArrowRight, Sword, Shield } from 'lucide-react';
 
 const fields = [
-  'Elite Athlete', 'Academic Excellence', 'Physical Fitness', 'Professional Growth',
-  'Creative Mastery', 'Mental Wellness', 'Programming Skills', 'Language Learning',
-  'Music Production', 'Content Creation', 'Writing & Literature', 'Business & Entrepreneurship'
+  'Elite Athlete', 
+  'Academic Excellence', 
+  'Physical Fitness', 
+  'Professional Growth',
+  'Creative Mastery', 
+  'Mental Wellness', 
+  'Programming Skills', 
+  'Language Learning',
+  'Music Production', 
+  'Content Creation', 
+  'Writing & Literature', 
+  'Business & Entrepreneurship',
+  'Martial Arts', 
+  'Cooking & Nutrition', 
+  'Public Speaking', 
+  'Digital Art & Design',
+  'Photography', 
+  'Gaming & Esports', 
+  'Meditation & Mindfulness', 
+  'Social Skills',
+  'Financial Literacy', 
+  'Scientific Research', 
+  'Dance & Movement', 
+  'Chess & Strategy',
+  'Custom Goal'
 ];
 
 export default function SignupPage() {

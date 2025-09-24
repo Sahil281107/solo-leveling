@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import pool from '../config/database';
 import prisma from '../config/prisma'; 
+import { initializeNewUserQuests } from '../schedulers/questScheduler';
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const fs = require('fs').promises;
@@ -57,32 +58,19 @@ const validatePassword = (password: string): { isValid: boolean; message?: strin
   return { isValid: true };
 };
 
+// Update your signup function in authController.ts with better error handling:
+
 export const signup = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   
   try {
     await connection.beginTransaction();
     
-    const { 
-      email, 
-      username, 
-      password, 
-      user_type, 
-      full_name, 
-      field_of_interest, 
-      commitment_level, 
-      experience_level 
-    } = req.body;
+    const { email, username, password, user_type, full_name, field_of_interest, commitment_level, experience_level } = req.body;
     
-const passwordValidation = validatePassword(password);
-    if (!passwordValidation.isValid) {
-      await connection.rollback();
-      return res.status(400).json({ error: passwordValidation.message });
-    }
-
-    // Check if user exists
+    // Check if user already exists
     const [existing]: any = await connection.execute(
-      'SELECT user_id FROM users WHERE email = ? OR username = ?',
+      'SELECT user_id, email, username FROM users WHERE email = ? OR username = ?',
       [email, username]
     );
     
@@ -96,14 +84,14 @@ const passwordValidation = validatePassword(password);
     
     // Handle profile photo
     let profilePhotoUrl = null;
-if (req.file) {
-  const file = req.file as any;
- profilePhotoUrl = `/uploads/profiles/${file.filename}`;
-
-  // Move file from temp to profiles
-  const oldPath = file.path;
-  const newPath = `uploads/profiles/${file.filename}`;
-  await fs.rename(oldPath, newPath);
+    if (req.file) {
+      const file = req.file as any;
+      profilePhotoUrl = `/uploads/profiles/${file.filename}`;
+      
+      // Move file from temp to profiles
+      const oldPath = file.path;
+      const newPath = `uploads/profiles/${file.filename}`;
+      await fs.rename(oldPath, newPath);
     }
     
     // Create user
@@ -113,21 +101,46 @@ if (req.file) {
     );
     
     const userId = userResult.insertId;
+    console.log(`Created user with ID: ${userId}`);
     
     // Create profile based on user type
     if (user_type === 'adventurer') {
-      await connection.execute(
-        'INSERT INTO adventurer_profiles (user_id, full_name, field_of_interest, commitment_level, experience_level) VALUES (?, ?, ?, ?, ?)',
-        [userId, full_name, field_of_interest, commitment_level, experience_level]
+      // Check if profile already exists (safety check)
+      const [existingProfile]: any = await connection.execute(
+        'SELECT user_id FROM adventurer_profiles WHERE user_id = ?',
+        [userId]
       );
+      
+      if (existingProfile.length === 0) {
+        await connection.execute(
+          'INSERT INTO adventurer_profiles (user_id, full_name, field_of_interest, commitment_level, experience_level) VALUES (?, ?, ?, ?, ?)',
+          [userId, full_name, field_of_interest, commitment_level, experience_level]
+        );
+        console.log(`Created adventurer profile for user ${userId}`);
+      } else {
+        console.log(`Adventurer profile already exists for user ${userId}`);
+      }
+      
     } else if (user_type === 'coach') {
-      await connection.execute(
-        'INSERT INTO coach_profiles (user_id, full_name, specialization) VALUES (?, ?, ?)',
-        [userId, full_name, field_of_interest]
+      // Check if profile already exists (safety check)
+      const [existingProfile]: any = await connection.execute(
+        'SELECT user_id FROM coach_profiles WHERE user_id = ?',
+        [userId]
       );
+      
+      if (existingProfile.length === 0) {
+        await connection.execute(
+          'INSERT INTO coach_profiles (user_id, full_name, specialization) VALUES (?, ?, ?)',
+          [userId, full_name, field_of_interest]
+        );
+        console.log(`Created coach profile for user ${userId}`);
+      } else {
+        console.log(`Coach profile already exists for user ${userId}`);
+      }
     }
     
     await connection.commit();
+    console.log(`Successfully completed signup for user ${userId}`);
     
     // Generate token
     const token = jwt.sign(
@@ -145,15 +158,7 @@ if (req.file) {
     } catch (logError) {
       console.warn('Failed to log signup activity:', logError);
     }
-    console.log("DEBUG signup user response:", {
-  user_id: userId,
-  email,
-  username,
-  user_type,
-  profile_photo_url: profilePhotoUrl
-    ? `${process.env.BASE_URL || 'http://localhost:5000'}${profilePhotoUrl}`
-    : null
-});
+    
     res.status(201).json({
       message: 'User created successfully',
       token,
@@ -163,20 +168,19 @@ if (req.file) {
         username,
         user_type,
         profile_photo_url: profilePhotoUrl
-         ? `${process.env.BASE_URL || 'http://localhost:5000'}${profilePhotoUrl}`
-      : null
+          ? `${process.env.BASE_URL || 'http://localhost:5000'}${profilePhotoUrl}`
+          : null
       }
     });
     
   } catch (error: any) {
     await connection.rollback();
     console.error('Signup error:', error);
-    res.status(500).json({ error: 'Failed to create user' });
+    res.status(500).json({ error: 'Failed to create account. Please try again.' });
   } finally {
     connection.release();
   }
 };
-
 export const login = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   

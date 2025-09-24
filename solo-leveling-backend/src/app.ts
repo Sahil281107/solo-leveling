@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
 import dotenv from 'dotenv'; // Change this line
+import { startQuestScheduler } from './schedulers/questScheduler';
 dotenv.config(); // Change this line
 
 const app: Application = express();
@@ -12,6 +13,7 @@ const PORT = process.env.PORT || 5000;
 import { testConnection } from './config/database';
 import routes from './routes';
 import { errorHandler } from './middleware/errorHandler';
+import { startAllSchedulers } from './schedulers/questScheduler';
 
 // Middleware
 app.use(helmet({
@@ -58,6 +60,8 @@ console.log("Serving uploads from:", path.join(__dirname, "../uploads"));
 // Routes
 app.use('/api', routes);
 
+startQuestScheduler(); 
+
 // Error handler
 app.use(errorHandler);
 
@@ -68,12 +72,18 @@ const startServer = async () => {
     
     if (!dbConnected) {
       console.log('⚠️ Starting server without database connection');
-      console.log('📝 Check your .env file and MySQL server');
+      console.log('🔧 Check your .env file and MySQL server');
+    } else {
+      console.log('✅ Database connected successfully');
+      
+      // 🎯 START AUTOMATIC QUEST GENERATION SYSTEM
+      startAllSchedulers();
     }
     
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📡 Health check: http://localhost:${PORT}/api/health`);
+      console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
+      console.log('🎮 Solo Leveling Life System - Quest Generation Active!');
     });
   } catch (error: any) {
     console.error('Failed to start server:', error.message);

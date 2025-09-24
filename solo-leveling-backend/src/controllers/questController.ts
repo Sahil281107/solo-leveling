@@ -1,6 +1,106 @@
 import { Request, Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import pool from '../config/database';
+interface QuestTemplate {
+  quest_template_id: number;
+  quest_title: string;
+  quest_description: string;
+  base_xp: number;
+  difficulty: string;
+  related_stat: string;
+  field_name: string;
+  quest_type: string;
+  is_active: boolean;
+}
+/**
+ * Fisher-Yates Shuffle Algorithm - for perfect randomization
+ * @param array - Array to shuffle
+ * @returns Shuffled array
+ */
+export const shuffleArray = <T>(array: T[]): T[] => {
+  const shuffled = [...array]; // Create a copy
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+};
+
+/**
+ * Advanced uniqueness checker - checks for similar quest titles
+ * @param questTitle - Title to check
+ * @param existingTitles - Set of existing titles
+ * @returns boolean - true if unique enough
+ */
+export const isQuestUnique = (questTitle: string, existingTitles: Set<string>): boolean => {
+  const normalizedTitle = questTitle.toLowerCase().trim();
+  
+  // Direct match check
+  if (existingTitles.has(normalizedTitle)) {
+    return false;
+  }
+  
+  // Similar title check (optional - prevents very similar quests)
+  for (const existingTitle of existingTitles) {
+    // Check if titles are too similar (more than 70% similar)
+    const similarity = calculateSimilarity(normalizedTitle, existingTitle);
+    if (similarity > 0.7) {
+      console.log(`Skipping similar quest: "${questTitle}" (${similarity}% similar to "${existingTitle}")`);
+      return false;
+    }
+  }
+  
+  return true;
+};
+
+/**
+ * Calculate similarity between two strings (simple version)
+ * @param str1 - First string
+ * @param str2 - Second string
+ * @returns number - Similarity score (0-1)
+ */
+export const calculateSimilarity = (str1: string, str2: string): number => {
+  const longer = str1.length > str2.length ? str1 : str2;
+  const shorter = str1.length > str2.length ? str2 : str1;
+  
+  if (longer.length === 0) return 1.0;
+  
+  const distance = levenshteinDistance(longer, shorter);
+  return (longer.length - distance) / longer.length;
+};
+
+/**
+ * Levenshtein distance calculation
+ */
+export const levenshteinDistance = (str1: string, str2: string): number => {
+  const matrix = [];
+  
+  for (let i = 0; i <= str2.length; i++) {
+    matrix[i] = [i];
+  }
+  
+  for (let j = 0; j <= str1.length; j++) {
+    matrix[0][j] = j;
+  }
+  
+  for (let i = 1; i <= str2.length; i++) {
+    for (let j = 1; j <= str1.length; j++) {
+      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  
+  return matrix[str2.length][str1.length];
+};
+
+
 
 export const getDailyQuests = async (req: AuthRequest, res: Response) => {
   try {
@@ -76,84 +176,106 @@ export const generateDailyQuests = async (req: AuthRequest, res: Response) => {
     
     const fieldOfInterest = userProfile[0].field_of_interest;
     
-    // Clear existing active daily quests for this user
+    // Clear existing active daily quests
     await connection.execute(
       'DELETE FROM user_active_quests WHERE user_id = ? AND quest_type = "daily"',
       [userId]
     );
     
-    // Get available quest templates for user's field
+    // 🎯 STEP 1: Get all available quests (already randomized by database)
     const [templates]: any = await connection.execute(
       `SELECT * FROM quest_templates 
        WHERE field_name = ? AND quest_type = 'daily' AND is_active = 1 
-       ORDER BY RAND() 
-       LIMIT 8`,
+       ORDER BY RAND()`,
       [fieldOfInterest]
     );
     
-    // If no specific templates found, get general templates
-    if (templates.length === 0) {
-      const [generalTemplates]: any = await connection.execute(
-        `SELECT * FROM quest_templates 
-         WHERE quest_type = 'daily' AND is_active = 1 
-         ORDER BY RAND() 
-         LIMIT 8`
-      );
-      templates.push(...generalTemplates);
+    console.log(`Found ${templates.length} quest templates for ${fieldOfInterest}`);
+    
+    // 🎯 STEP 2: Apply additional randomization with JavaScript
+    const shuffledTemplates = shuffleArray(templates as QuestTemplate[]);
+    
+    // 🎯 STEP 3: Select unique quests with advanced checking
+    const selectedQuests: QuestTemplate[] = [];
+    const usedQuestIds = new Set<number>();
+    const usedQuestTitles = new Set<string>();
+    
+    for (const template of shuffledTemplates) {
+      if (selectedQuests.length >= 8) break;
+      
+      // Check ID uniqueness
+      if (usedQuestIds.has(template.quest_template_id)) continue;
+      
+      // Check title uniqueness (with similarity checking)
+      if (!isQuestUnique(template.quest_title, usedQuestTitles)) continue;
+      
+      // Quest is unique - add it!
+      selectedQuests.push(template);
+      usedQuestIds.add(template.quest_template_id);
+      usedQuestTitles.add(template.quest_title.toLowerCase().trim());
+      
+      console.log(`✅ Selected unique quest: "${template.quest_title}"`);
     }
     
-    // If still no templates, create default ones
-    if (templates.length === 0) {
-      const defaultQuests = [
-        { title: 'Morning Routine', xp: 25, difficulty: 'easy', stat: 'Stamina' },
-        { title: 'Study/Practice for 30 minutes', xp: 35, difficulty: 'medium', stat: 'Intelligence' },
-        { title: 'Physical Exercise', xp: 30, difficulty: 'medium', stat: 'Strength' },
-        { title: 'Skill Development', xp: 40, difficulty: 'medium', stat: 'Intelligence' },
-        { title: 'Healthy Meal Planning', xp: 20, difficulty: 'easy', stat: 'Wisdom' },
-        { title: 'Goal Review & Planning', xp: 25, difficulty: 'easy', stat: 'Wisdom' },
-        { title: 'Creative Activity', xp: 30, difficulty: 'medium', stat: 'Charisma' },
-        { title: 'Evening Reflection', xp: 20, difficulty: 'easy', stat: 'Wisdom' }
-      ];
+    // 🎯 STEP 4: If we need more quests, get from other fields
+    if (selectedQuests.length < 8) {
+      console.log(`Need ${8 - selectedQuests.length} more quests from other fields`);
       
-      for (const quest of defaultQuests) {
-        await connection.execute(
-          `INSERT INTO user_active_quests 
-           (user_id, quest_template_id, quest_type, assigned_date, expires_at) 
-           VALUES (?, NULL, 'daily', CURDATE(), DATE_ADD(NOW(), INTERVAL 1 DAY))`,
-          [userId]
-        );
+      const [backupTemplates]: any = await connection.execute(
+        `SELECT * FROM quest_templates 
+         WHERE quest_type = 'daily' AND is_active = 1 
+         AND field_name != ?
+         ORDER BY RAND() 
+         LIMIT ?`,
+        [fieldOfInterest, 20] // Get more than needed to ensure uniqueness
+      );
+      
+      const shuffledBackups = shuffleArray(backupTemplates as QuestTemplate[]);
+      
+      for (const template of shuffledBackups) {
+        if (selectedQuests.length >= 8) break;
+        
+        if (!usedQuestIds.has(template.quest_template_id) && 
+            isQuestUnique(template.quest_title, usedQuestTitles)) {
+          
+          selectedQuests.push(template);
+          usedQuestIds.add(template.quest_template_id);
+          usedQuestTitles.add(template.quest_title.toLowerCase().trim());
+          
+          console.log(`✅ Added backup quest: "${template.quest_title}" from ${template.field_name}`);
+        }
       }
-    } else {
-      // Assign quests from templates
-      for (const template of templates) {
-        await connection.execute(
-          `INSERT INTO user_active_quests 
-           (user_id, quest_template_id, quest_type, assigned_date, expires_at) 
-           VALUES (?, ?, 'daily', CURDATE(), DATE_ADD(NOW(), INTERVAL 1 DAY))`,
-          [userId, template.quest_template_id]
-        );
-      }
+    }
+    
+    // 🎯 STEP 5: Final randomization of selected quests
+    const finalRandomQuests = shuffleArray(selectedQuests).slice(0, 8);
+    
+    // 🎯 STEP 6: Insert the random unique quests
+    for (const template of finalRandomQuests) {
+      await connection.execute(
+        `INSERT INTO user_active_quests 
+         (user_id, quest_template_id, quest_type, assigned_date, expires_at) 
+         VALUES (?, ?, 'daily', CURDATE(), DATE_ADD(NOW(), INTERVAL 1 DAY))`,
+        [userId, template.quest_template_id]
+      );
     }
     
     await connection.commit();
     
-    // Fetch the newly created quests
+    // Fetch and return the results
     const [newQuests]: any = await connection.execute(
       `SELECT 
         uaq.*,
         COALESCE(qt.quest_title, 
-          CASE uaq.quest_template_id
-            WHEN NULL THEN 
-              CASE ROW_NUMBER() OVER (ORDER BY uaq.active_quest_id)
-                WHEN 1 THEN 'Morning Routine'
-                WHEN 2 THEN 'Study/Practice for 30 minutes'
-                WHEN 3 THEN 'Physical Exercise'
-                WHEN 4 THEN 'Skill Development'
-                WHEN 5 THEN 'Healthy Meal Planning'
-                WHEN 6 THEN 'Goal Review & Planning'
-                WHEN 7 THEN 'Creative Activity'
-                WHEN 8 THEN 'Evening Reflection'
-              END
+          CASE ROW_NUMBER() OVER (ORDER BY uaq.active_quest_id)
+            WHEN 1 THEN 'Morning Routine'
+            WHEN 2 THEN 'Study/Practice for 30 minutes'
+            WHEN 3 THEN 'Physical Exercise'
+            WHEN 4 THEN 'Skill Development'
+            WHEN 5 THEN 'Healthy Meal Planning'
+            WHEN 6 THEN 'Goal Review & Planning'
+            WHEN 7 THEN 'Creative Activity'
+            WHEN 8 THEN 'Evening Reflection'
           END
         ) as quest_title,
         COALESCE(qt.quest_description, 'Complete this daily quest to gain XP') as quest_description,
@@ -173,13 +295,20 @@ export const generateDailyQuests = async (req: AuthRequest, res: Response) => {
         COALESCE(qt.related_stat, 'Strength') as related_stat
       FROM user_active_quests uaq
       LEFT JOIN quest_templates qt ON uaq.quest_template_id = qt.quest_template_id
-      WHERE uaq.user_id = ? AND uaq.quest_type = 'daily'`,
+      WHERE uaq.user_id = ? AND uaq.quest_type = 'daily'
+      ORDER BY RAND()`, // One final randomization of the display order
       [userId]
     );
     
+    console.log(`🎯 SUCCESS: Generated ${newQuests.length} unique random daily quests`);
+    
     res.json({ 
-      message: 'Daily quests generated successfully', 
-      quests: newQuests 
+      message: 'Random unique daily quests generated successfully!', 
+      quests: newQuests,
+      count: newQuests.length,
+      fieldOfInterest: fieldOfInterest,
+      uniqueCount: new Set(newQuests.map((q: any) => q.quest_title)).size,
+      randomSeed: Date.now() // For debugging randomness
     });
     
   } catch (error: any) {
@@ -190,7 +319,6 @@ export const generateDailyQuests = async (req: AuthRequest, res: Response) => {
     connection.release();
   }
 };
-
 export const generateWeeklyQuests = async (req: AuthRequest, res: Response) => {
   const connection = await pool.getConnection();
   
@@ -757,5 +885,231 @@ const updateUserStreak = async (connection: any, userId: number, questType: stri
   } catch (error) {
     console.error('Streak update error:', error);
     return null;
+  }
+};
+
+// Add these functions to your questController.ts
+
+/**
+ * Automatic Quest Expiration and Renewal System
+ * This runs daily to expire old quests and generate fresh ones
+ */
+export const processQuestExpiration = async (req: AuthRequest, res: Response) => {
+  const connection = await pool.getConnection();
+  
+  try {
+    await connection.beginTransaction();
+    
+    console.log('🕒 Starting automatic quest expiration process...');
+    
+    // Step 1: Mark all expired daily quests as expired (not completed)
+    const [expiredDaily]: any = await connection.execute(
+      `UPDATE user_active_quests 
+       SET is_completed = FALSE, 
+           expires_at = NOW() - INTERVAL 1 SECOND
+       WHERE quest_type = 'daily' 
+       AND expires_at < NOW() 
+       AND is_completed = FALSE`
+    );
+    
+    console.log(`⏰ Expired ${expiredDaily.affectedRows} uncompleted daily quests`);
+    
+    // Step 2: Get all users who need new daily quests
+    const [usersNeedingQuests]: any = await connection.execute(
+      `SELECT DISTINCT u.user_id, ap.field_of_interest, u.email
+       FROM users u
+       JOIN adventurer_profiles ap ON u.user_id = ap.user_id
+       LEFT JOIN user_active_quests uaq ON u.user_id = uaq.user_id 
+         AND uaq.quest_type = 'daily' 
+         AND uaq.expires_at > NOW()
+       WHERE u.user_type = 'adventurer' 
+       AND uaq.user_id IS NULL`
+    );
+    
+    console.log(`👥 Found ${usersNeedingQuests.length} users needing new daily quests`);
+    
+    let renewedUsers = 0;
+    
+    // Step 3: Generate fresh daily quests for each user
+    for (const user of usersNeedingQuests) {
+      try {
+        const userId = user.user_id;
+        const fieldOfInterest = user.field_of_interest;
+        
+        // Generate new unique daily quests using our improved algorithm
+        const newQuests = await generateUniqueQuestsForUser(connection, userId, fieldOfInterest);
+        
+        if (newQuests.length > 0) {
+          console.log(`✅ Renewed ${newQuests.length} daily quests for user ${user.email}`);
+          renewedUsers++;
+        }
+        
+      } catch (userError) {
+        console.error(`❌ Error renewing quests for user ${user.email}:`, userError);
+      }
+    }
+    
+    // Step 4: Clean up very old expired quests (optional - keeps database clean)
+    const [cleanedUp]: any = await connection.execute(
+      `DELETE FROM user_active_quests 
+       WHERE expires_at < NOW() - INTERVAL 7 DAY 
+       AND is_completed = FALSE`
+    );
+    
+    console.log(`🧹 Cleaned up ${cleanedUp.affectedRows} old expired quests`);
+    
+    await connection.commit();
+    
+    const summary = {
+      message: 'Quest expiration process completed successfully',
+      expiredQuests: expiredDaily.affectedRows,
+      usersRenewed: renewedUsers,
+      totalUsers: usersNeedingQuests.length,
+      oldQuestsCleaned: cleanedUp.affectedRows,
+      processTime: new Date().toISOString()
+    };
+    
+    console.log('🎯 Quest expiration summary:', summary);
+    
+    res.json(summary);
+    
+  } catch (error: any) {
+    await connection.rollback();
+    console.error('Quest expiration process error:', error);
+    res.status(500).json({ error: 'Failed to process quest expiration' });
+  } finally {
+    connection.release();
+  }
+};
+
+/**
+ * Helper function to generate unique quests for a specific user
+ * Extracted logic for reuse in expiration process
+ */
+const generateUniqueQuestsForUser = async (connection: any, userId: number, fieldOfInterest: string) => {
+  try {
+    // Get available quest templates for user's field
+    const [templates]: any = await connection.execute(
+      `SELECT * FROM quest_templates 
+       WHERE field_name = ? AND quest_type = 'daily' AND is_active = 1 
+       ORDER BY RAND()`,
+      [fieldOfInterest]
+    );
+    
+    // Apply uniqueness selection logic
+    const shuffledTemplates = shuffleArray(templates as QuestTemplate[]);
+    const selectedQuests: QuestTemplate[] = [];
+    const usedQuestIds = new Set<number>();
+    const usedQuestTitles = new Set<string>();
+    
+    for (const template of shuffledTemplates) {
+      if (selectedQuests.length >= 8) break;
+      
+      if (usedQuestIds.has(template.quest_template_id)) continue;
+      if (!isQuestUnique(template.quest_title, usedQuestTitles)) continue;
+      
+      selectedQuests.push(template);
+      usedQuestIds.add(template.quest_template_id);
+      usedQuestTitles.add(template.quest_title.toLowerCase().trim());
+    }
+    
+    // Get backup quests from other fields if needed
+    if (selectedQuests.length < 8) {
+      const [backupTemplates]: any = await connection.execute(
+        `SELECT * FROM quest_templates 
+         WHERE quest_type = 'daily' AND is_active = 1 
+         AND field_name != ?
+         ORDER BY RAND() 
+         LIMIT ?`,
+        [fieldOfInterest, 20]
+      );
+      
+      const shuffledBackups = shuffleArray(backupTemplates as QuestTemplate[]);
+      
+      for (const template of shuffledBackups) {
+        if (selectedQuests.length >= 8) break;
+        
+        if (!usedQuestIds.has(template.quest_template_id) && 
+            isQuestUnique(template.quest_title, usedQuestTitles)) {
+          
+          selectedQuests.push(template);
+          usedQuestIds.add(template.quest_template_id);
+          usedQuestTitles.add(template.quest_title.toLowerCase().trim());
+        }
+      }
+    }
+    
+    // Insert the new unique quests
+    const finalQuests = shuffleArray(selectedQuests).slice(0, 8);
+    
+    for (const template of finalQuests) {
+      await connection.execute(
+        `INSERT INTO user_active_quests 
+         (user_id, quest_template_id, quest_type, assigned_date, expires_at) 
+         VALUES (?, ?, 'daily', CURDATE(), DATE_ADD(NOW(), INTERVAL 1 DAY))`,
+        [userId, template.quest_template_id]
+      );
+    }
+    
+    return finalQuests;
+    
+  } catch (error) {
+    console.error('Generate unique quests for user error:', error);
+    return [];
+  }
+};
+
+/**
+ * Manual trigger for quest expiration (for testing)
+ * In production, this should be called automatically via cron job
+ */
+export const triggerQuestReset = async (req: AuthRequest, res: Response) => {
+  // This is the same as processQuestExpiration but with different messaging
+  return processQuestExpiration(req, res);
+};
+
+/**
+ * Check if current user needs quest renewal
+ * Useful for frontend to know when to show "generate new quests" button
+ */
+export const checkQuestStatus = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.user_id;
+    
+    const [activeQuests]: any = await pool.execute(
+      `SELECT COUNT(*) as active_count
+       FROM user_active_quests 
+       WHERE user_id = ? 
+       AND quest_type = 'daily' 
+       AND expires_at > NOW() 
+       AND is_completed = FALSE`,
+      [userId]
+    );
+    
+    const [expiredQuests]: any = await pool.execute(
+      `SELECT COUNT(*) as expired_count
+       FROM user_active_quests 
+       WHERE user_id = ? 
+       AND quest_type = 'daily' 
+       AND expires_at < NOW() 
+       AND is_completed = FALSE`,
+      [userId]
+    );
+    
+    const hasActiveQuests = activeQuests[0].active_count > 0;
+    const hasExpiredQuests = expiredQuests[0].expired_count > 0;
+    
+    res.json({
+      hasActiveQuests,
+      hasExpiredQuests,
+      activeQuestCount: activeQuests[0].active_count,
+      expiredQuestCount: expiredQuests[0].expired_count,
+      needsRenewal: !hasActiveQuests || hasExpiredQuests,
+      canGenerateNew: !hasActiveQuests
+    });
+    
+  } catch (error: any) {
+    console.error('Check quest status error:', error);
+    res.status(500).json({ error: 'Failed to check quest status' });
   }
 };
