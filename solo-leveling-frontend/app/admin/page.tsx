@@ -219,129 +219,295 @@ export default function AdminDashboard() {
   };
 
   const renderSettingControl = (category: string, key: string, setting: SettingValue) => {
-    const { value, type } = setting;
+  const { value, type } = setting;
 
-    switch (type) {
-      case 'boolean':
-        return (
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => updateSetting(category, key, !value)}
-              className={`relative w-12 h-6 rounded-full transition-all ${
-                value ? 'bg-gradient-to-r from-purple-600 to-blue-600' : 'bg-gray-600'
-              }`}
-            >
-              <div
-                className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-all ${
-                  value ? 'left-6' : 'left-0.5'
-                }`}
-              />
-            </button>
-            <span className="text-sm text-gray-300">
-              {value ? 'Enabled' : 'Disabled'}
-            </span>
-          </div>
-        );
-
-      case 'number':
-      case 'integer':
-        return (
-          <input
-            type="number"
-            value={value || 0}
-            onChange={(e) => {
-              const newValue = type === 'integer' ? parseInt(e.target.value) || 0 : parseFloat(e.target.value) || 0;
-              updateSetting(category, key, newValue);
-            }}
-            className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
-          />
-        );
-
-      case 'string':
-        return (
-          <input
-            type="text"
-            value={value || ''}
-            onChange={(e) => updateSetting(category, key, e.target.value)}
-            className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
-          />
-        );
-
-      case 'json':
-        return (
-          <textarea
-            value={typeof value === 'string' ? value : JSON.stringify(value || {}, null, 2)}
-            onChange={(e) => {
-              try {
-                const jsonValue = JSON.parse(e.target.value);
-                updateSetting(category, key, jsonValue);
-              } catch (error) {
-                updateSetting(category, key, e.target.value);
-              }
-            }}
-            rows={3}
-            className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 font-mono text-sm"
-          />
-        );
-
-      default:
-        return (
-          <div className="text-gray-400 text-sm">
-            Unknown setting type: {type}
-          </div>
-        );
-    }
-  };
-
-  const renderSettingsSection = (section: string) => {
-    // Special sections
-    if (section === 'monitoring') {
-      return <SystemMonitoring />;
-    }
-    
-    if (section === 'feature_flags') {
-      return <FeatureFlags />;
-    }
-
-    // Regular settings sections
-    const sectionSettings = settings[section as keyof SystemSettings] || {};
-    
-    if (Object.keys(sectionSettings).length === 0) {
+  switch (type) {
+    case 'boolean':
       return (
-        <div className="text-center py-12">
-          <Settings className="w-12 h-12 text-gray-500 mx-auto mb-4" />
-          <p className="text-gray-400 mb-2">No settings available for this section</p>
-          <p className="text-gray-500 text-sm">Settings will appear here once they are loaded from the database</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button
+            onClick={() => updateSetting(category, key, !value)}
+            style={{
+              position: 'relative',
+              width: '52px',
+              height: '28px',
+              borderRadius: '14px',
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+              background: value 
+                ? 'linear-gradient(135deg, #9333ea, #ec4899)' 
+                : 'rgba(107, 114, 128, 0.4)',
+              boxShadow: value ? '0 4px 12px rgba(147, 51, 234, 0.4)' : 'none'
+            }}
+          >
+            <div
+              style={{
+                position: 'absolute',
+                top: '3px',
+                left: value ? '27px' : '3px',
+                width: '22px',
+                height: '22px',
+                background: '#fff',
+                borderRadius: '50%',
+                transition: 'all 0.3s ease',
+                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+              }}
+            />
+          </button>
+          <span style={{ 
+            fontSize: '14px',
+            fontWeight: '600',
+            color: value ? '#10b981' : '#9ca3af'
+          }}>
+            {value ? 'Enabled' : 'Disabled'}
+          </span>
         </div>
       );
-    }
 
+    case 'number':
+    case 'integer':
+      return (
+        <input
+          type="number"
+          value={value || 0}
+          onChange={(e) => {
+            const newValue = type === 'integer' ? parseInt(e.target.value) || 0 : parseFloat(e.target.value) || 0;
+            updateSetting(category, key, newValue);
+          }}
+          style={{
+            width: '100%',
+            padding: '12px 16px',
+            borderRadius: '10px',
+            border: '1px solid rgba(147, 51, 234, 0.2)',
+            background: 'rgba(0, 0, 0, 0.5)',
+            color: '#fff',
+            fontSize: '14px',
+            transition: 'all 0.3s ease',
+            outline: 'none'
+          }}
+          onFocus={(e) => {
+            e.target.style.borderColor = '#a855f7';
+            e.target.style.boxShadow = '0 0 0 3px rgba(168, 85, 247, 0.1)';
+            e.target.style.background = 'rgba(0, 0, 0, 0.7)';
+          }}
+          onBlur={(e) => {
+            e.target.style.borderColor = 'rgba(147, 51, 234, 0.2)';
+            e.target.style.boxShadow = 'none';
+            e.target.style.background = 'rgba(0, 0, 0, 0.5)';
+          }}
+        />
+      );
+
+    case 'string':
+      return (
+        <input
+          type="text"
+          value={value || ''}
+          onChange={(e) => updateSetting(category, key, e.target.value)}
+          style={{
+            width: '100%',
+            padding: '12px 16px',
+            borderRadius: '10px',
+            border: '1px solid rgba(147, 51, 234, 0.2)',
+            background: 'rgba(0, 0, 0, 0.5)',
+            color: '#fff',
+            fontSize: '14px',
+            transition: 'all 0.3s ease',
+            outline: 'none'
+          }}
+          onFocus={(e) => {
+            e.target.style.borderColor = '#a855f7';
+            e.target.style.boxShadow = '0 0 0 3px rgba(168, 85, 247, 0.1)';
+            e.target.style.background = 'rgba(0, 0, 0, 0.7)';
+          }}
+          onBlur={(e) => {
+            e.target.style.borderColor = 'rgba(147, 51, 234, 0.2)';
+            e.target.style.boxShadow = 'none';
+            e.target.style.background = 'rgba(0, 0, 0, 0.5)';
+          }}
+        />
+      );
+
+    case 'json':
+      return (
+        <textarea
+          value={typeof value === 'string' ? value : JSON.stringify(value || {}, null, 2)}
+          onChange={(e) => {
+            try {
+              const jsonValue = JSON.parse(e.target.value);
+              updateSetting(category, key, jsonValue);
+            } catch (error) {
+              updateSetting(category, key, e.target.value);
+            }
+          }}
+          rows={4}
+          style={{
+            width: '100%',
+            padding: '12px 16px',
+            borderRadius: '10px',
+            border: '1px solid rgba(147, 51, 234, 0.2)',
+            background: 'rgba(0, 0, 0, 0.5)',
+            color: '#fff',
+            fontSize: '13px',
+            fontFamily: 'monospace',
+            transition: 'all 0.3s ease',
+            outline: 'none',
+            resize: 'vertical'
+          }}
+          onFocus={(e) => {
+            e.target.style.borderColor = '#a855f7';
+            e.target.style.boxShadow = '0 0 0 3px rgba(168, 85, 247, 0.1)';
+            e.target.style.background = 'rgba(0, 0, 0, 0.7)';
+          }}
+          onBlur={(e) => {
+            e.target.style.borderColor = 'rgba(147, 51, 234, 0.2)';
+            e.target.style.boxShadow = 'none';
+            e.target.style.background = 'rgba(0, 0, 0, 0.5)';
+          }}
+        />
+      );
+
+    default:
+      return (
+        <div style={{ color: '#9ca3af', fontSize: '14px' }}>
+          Unknown setting type: {type}
+        </div>
+      );
+  }
+};
+
+ const renderSettingsSection = (section: string) => {
+  // Special sections
+  if (section === 'monitoring') {
+    return <SystemMonitoring />;
+  }
+  
+  if (section === 'feature_flags') {
+    return <FeatureFlags />;
+  }
+
+  // Regular settings sections
+  const sectionSettings = settings[section as keyof SystemSettings] || {};
+  
+  if (Object.keys(sectionSettings).length === 0) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {Object.entries(sectionSettings).map(([key, setting]) => (
-          <div key={key} className="bg-white/5 border border-white/10 rounded-lg p-4 hover:border-purple-500/30 transition-all">
-            <div className="flex items-start justify-between mb-2">
-              <div>
-                <h4 className="text-white font-medium">{formatSettingName(key)}</h4>
-                <p className="text-gray-400 text-sm mt-1">{setting.description}</p>
-              </div>
-              {setting.type === 'boolean' && (
-                setting.value ? (
-                  <CheckCircle className="w-5 h-5 text-green-400" />
-                ) : (
-                  <Clock className="w-5 h-5 text-gray-500" />
-                )
-              )}
-            </div>
-            
-            <div className="mt-4">
-              {renderSettingControl(section, key, setting)}
-            </div>
-          </div>
-        ))}
+      <div style={{ textAlign: 'center', padding: '48px 0' }}>
+        <Settings style={{ width: '48px', height: '48px', color: '#6b7280', margin: '0 auto 16px' }} />
+        <p style={{ color: '#9ca3af', marginBottom: '8px', fontSize: '16px' }}>No settings available for this section</p>
+        <p style={{ color: '#6b7280', fontSize: '14px' }}>Settings will appear here once they are loaded from the database</p>
       </div>
     );
-  };
+  }
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px' }}>
+      {Object.entries(sectionSettings).map(([key, setting], index) => (
+        <div
+          key={key}
+          style={{
+            background: 'rgba(0, 0, 0, 0.3)',
+            border: '1px solid rgba(147, 51, 234, 0.15)',
+            borderRadius: '12px',
+            padding: '20px',
+            transition: 'all 0.3s ease',
+            position: 'relative',
+            overflow: 'hidden',
+            animation: `fadeInUp 0.4s ease-out ${index * 0.05}s both`
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = 'rgba(147, 51, 234, 0.4)';
+            e.currentTarget.style.background = 'rgba(147, 51, 234, 0.05)';
+            e.currentTarget.style.transform = 'translateY(-2px)';
+            e.currentTarget.style.boxShadow = '0 8px 20px rgba(147, 51, 234, 0.2)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = 'rgba(147, 51, 234, 0.15)';
+            e.currentTarget.style.background = 'rgba(0, 0, 0, 0.3)';
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = 'none';
+          }}
+        >
+          {/* Glow effect on hover */}
+          <div style={{
+            position: 'absolute',
+            top: '-2px',
+            left: '-2px',
+            right: '-2px',
+            height: '2px',
+            background: 'linear-gradient(90deg, transparent, #a855f7, transparent)',
+            opacity: 0,
+            transition: 'opacity 0.3s ease'
+          }} className="card-glow-top" />
+          
+          <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', gap: '16px', marginBottom: '16px' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <h4 style={{ 
+                  color: '#fff', 
+                  fontWeight: '600',
+                  fontSize: '15px',
+                  margin: 0
+                }}>
+                  {formatSettingName(key)}
+                </h4>
+                {setting.type === 'boolean' && (
+                  setting.value ? (
+                    <CheckCircle style={{ width: '16px', height: '16px', color: '#10b981' }} />
+                  ) : (
+                    <Clock style={{ width: '16px', height: '16px', color: '#6b7280' }} />
+                  )
+                )}
+              </div>
+              <p style={{ 
+                color: '#9ca3af', 
+                fontSize: '13px',
+                margin: 0,
+                lineHeight: '1.5'
+              }}>
+                {setting.description}
+              </p>
+            </div>
+            
+            {/* Type Badge */}
+            <div style={{
+              background: setting.type === 'boolean' 
+                ? 'rgba(16, 185, 129, 0.1)' 
+                : setting.type === 'number' || setting.type === 'integer'
+                ? 'rgba(59, 130, 246, 0.1)'
+                : 'rgba(168, 85, 247, 0.1)',
+              color: setting.type === 'boolean' 
+                ? '#10b981' 
+                : setting.type === 'number' || setting.type === 'integer'
+                ? '#3b82f6'
+                : '#a855f7',
+              border: `1px solid ${
+                setting.type === 'boolean' 
+                  ? 'rgba(16, 185, 129, 0.3)' 
+                  : setting.type === 'number' || setting.type === 'integer'
+                  ? 'rgba(59, 130, 246, 0.3)'
+                  : 'rgba(168, 85, 247, 0.3)'
+              }`,
+              padding: '4px 10px',
+              borderRadius: '6px',
+              fontSize: '11px',
+              fontWeight: '700',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              whiteSpace: 'nowrap'
+            }}>
+              {setting.type}
+            </div>
+          </div>
+          
+          <div style={{ marginTop: '16px' }}>
+            {renderSettingControl(section, key, setting)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
 
   if (loading) {
     return (
@@ -662,124 +828,387 @@ export default function AdminDashboard() {
           {activeTab === 'logs' && <AdminLogs />}
           
           {/* Settings Tab Content */}
-          {activeTab === 'settings' && (
-            <div className="grid grid-cols-12 gap-6">
-              {/* Settings Sidebar */}
-              <div className="col-span-12 lg:col-span-3">
-                <div className="bg-black/60 backdrop-blur-lg border border-purple-500/20 rounded-xl p-4">
-                  <h3 className="text-purple-400 text-sm font-semibold uppercase tracking-wide mb-4">
-                    Settings Categories
-                  </h3>
-                  <div className="space-y-2">
-                    {settingsTabs.map((tab) => {
-                      const Icon = tab.icon;
-                      return (
-                        <button
-                          key={tab.id}
-                          onClick={() => setActiveSettingsTab(tab.id)}
-                          className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all ${
-                            activeSettingsTab === tab.id
-                              ? `bg-gradient-to-r ${tab.color} text-white shadow-lg`
-                              : 'text-gray-400 hover:text-white hover:bg-white/10'
-                          }`}
-                        >
-                          <Icon className="w-5 h-5" />
-                          <span className="font-medium text-sm">{tab.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+          // Find this section in your app/admin/page.tsx (around line 680+)
 
-                {/* Settings Quick Stats */}
-                <div className="bg-black/60 backdrop-blur-lg border border-purple-500/20 rounded-xl p-4 mt-4">
-                  <h4 className="text-white font-medium mb-3">Quick Stats</h4>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400 text-sm">Active Settings</span>
-                      <span className="text-white font-semibold">
-                        {Object.values(settings).reduce((count: number, section: SettingsCategory) => count + Object.keys(section).length, 0)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400 text-sm">Categories</span>
-                      <span className="text-purple-400 font-semibold">{settingsTabs.length}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400 text-sm">Unsaved Changes</span>
-                      <span className={`font-semibold ${hasChanges ? 'text-yellow-400' : 'text-green-400'}`}>
-                        {hasChanges ? 'Yes' : 'None'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+{activeTab === 'settings' && (
+  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '24px' }}>
+    {/* Enhanced Settings Sidebar */}
+    <div style={{ gridColumn: 'span 12 / span 12' }} className="lg:col-span-3">
+      <div style={{
+        background: 'rgba(0, 0, 0, 0.6)',
+        backdropFilter: 'blur(20px)',
+        border: '1px solid rgba(147, 51, 234, 0.2)',
+        borderRadius: '16px',
+        padding: '20px',
+        marginBottom: '24px'
+      }}>
+        <h3 style={{
+          color: '#a855f7',
+          fontSize: '12px',
+          fontWeight: '600',
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+          marginBottom: '16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <Settings size={16} />
+          Settings Categories
+        </h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {settingsTabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeSettingsTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveSettingsTab(tab.id)}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '14px 16px',
+                  borderRadius: '12px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  background: isActive 
+                    ? 'linear-gradient(135deg, rgba(147, 51, 234, 0.3), rgba(236, 72, 153, 0.3))'
+                    : 'transparent',
+                  color: isActive ? '#fff' : '#9ca3af',
+                  fontWeight: isActive ? '600' : '500',
+                  fontSize: '14px',
+                  boxShadow: isActive ? '0 4px 15px rgba(147, 51, 234, 0.3)' : 'none',
+                  transform: isActive ? 'translateX(4px)' : 'translateX(0)'
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                    e.currentTarget.style.color = '#fff';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.color = '#9ca3af';
+                  }
+                }}
+              >
+                <Icon style={{ width: '20px', height: '20px', position: 'relative', zIndex: 1 }} />
+                <span style={{ position: 'relative', zIndex: 1 }}>{tab.label}</span>
+                {isActive && (
+                  <>
+                    <div style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      width: '3px',
+                      height: '60%',
+                      background: 'linear-gradient(to bottom, #a855f7, #ec4899)',
+                      borderRadius: '0 2px 2px 0'
+                    }} />
+                    <div style={{
+                      position: 'absolute',
+                      right: '12px',
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      background: '#10b981',
+                      boxShadow: '0 0 8px #10b981',
+                      animation: 'pulse 2s infinite'
+                    }} />
+                  </>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Enhanced Settings Quick Stats */}
+      <div style={{
+        background: 'rgba(0, 0, 0, 0.6)',
+        backdropFilter: 'blur(20px)',
+        border: '1px solid rgba(147, 51, 234, 0.2)',
+        borderRadius: '16px',
+        padding: '20px'
+      }}>
+        <h4 style={{
+          color: '#fff',
+          fontWeight: '600',
+          marginBottom: '16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <Activity size={18} />
+          Quick Stats
+        </h4>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '10px 12px',
+            background: 'rgba(147, 51, 234, 0.05)',
+            borderRadius: '8px',
+            border: '1px solid rgba(147, 51, 234, 0.1)'
+          }}>
+            <span style={{ color: '#9ca3af', fontSize: '14px' }}>Active Settings</span>
+            <span style={{
+              color: '#fff',
+              fontWeight: '700',
+              fontSize: '18px'
+            }}>
+              {Object.values(settings).reduce((count: number, section: SettingsCategory) => count + Object.keys(section).length, 0)}
+            </span>
+          </div>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '10px 12px',
+            background: 'rgba(147, 51, 234, 0.05)',
+            borderRadius: '8px',
+            border: '1px solid rgba(147, 51, 234, 0.1)'
+          }}>
+            <span style={{ color: '#9ca3af', fontSize: '14px' }}>Categories</span>
+            <span style={{ color: '#a855f7', fontWeight: '600' }}>{settingsTabs.length}</span>
+          </div>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '10px 12px',
+            background: hasChanges ? 'rgba(250, 204, 21, 0.05)' : 'rgba(16, 185, 129, 0.05)',
+            borderRadius: '8px',
+            border: hasChanges ? '1px solid rgba(250, 204, 21, 0.2)' : '1px solid rgba(16, 185, 129, 0.2)'
+          }}>
+            <span style={{ color: '#9ca3af', fontSize: '14px' }}>Unsaved Changes</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: hasChanges ? '#facc15' : '#10b981',
+                boxShadow: hasChanges ? '0 0 10px #facc15' : '0 0 10px #10b981',
+                animation: hasChanges ? 'pulse 2s infinite' : 'none'
+              }} />
+              <span style={{
+                fontWeight: '600',
+                color: hasChanges ? '#facc15' : '#10b981'
+              }}>
+                {hasChanges ? 'Yes' : 'None'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Enhanced Settings Main Content */}
+    <div style={{ gridColumn: 'span 12 / span 12' }} className="lg:col-span-9">
+      <div style={{
+        background: 'rgba(0, 0, 0, 0.6)',
+        backdropFilter: 'blur(20px)',
+        border: '1px solid rgba(147, 51, 234, 0.2)',
+        borderRadius: '16px',
+        overflow: 'hidden'
+      }}>
+        {/* Enhanced Settings Header */}
+        <div style={{
+          padding: '24px 32px',
+          borderBottom: '1px solid rgba(147, 51, 234, 0.2)',
+          background: 'linear-gradient(135deg, rgba(147, 51, 234, 0.08), rgba(236, 72, 153, 0.08))',
+          position: 'relative'
+        }}>
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: '2px',
+            background: 'linear-gradient(90deg, transparent, #a855f7, transparent)'
+          }} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, #9333ea, #ec4899)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                position: 'relative',
+                boxShadow: '0 8px 20px rgba(147, 51, 234, 0.4)'
+              }}>
+                {(() => {
+                  const Icon = settingsTabs.find(t => t.id === activeSettingsTab)?.icon || Settings;
+                  return <Icon style={{ width: '26px', height: '26px', color: '#fff' }} />;
+                })()}
+                <div style={{
+                  position: 'absolute',
+                  inset: '-4px',
+                  borderRadius: '14px',
+                  border: '2px solid rgba(147, 51, 234, 0.4)',
+                  animation: 'spin 4s linear infinite'
+                }} />
               </div>
-
-              {/* Settings Main Content */}
-              <div className="col-span-12 lg:col-span-9">
-                <div className="bg-black/60 backdrop-blur-lg border border-purple-500/20 rounded-xl overflow-hidden">
-                  {/* Settings Header */}
-                  <div className="p-6 border-b border-purple-500/20">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h2 className="text-xl font-bold text-white">
-                          {settingsTabs.find(t => t.id === activeSettingsTab)?.label || 'Settings'}
-                        </h2>
-                        <p className="text-gray-400 text-sm mt-1">
-                          Configure system settings for this category
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Settings Content */}
-                  <div className="p-6">
-                    {renderSettingsSection(activeSettingsTab)}
-                  </div>
-
-                  {/* Settings Action Buttons */}
-                  {!['monitoring', 'feature_flags'].includes(activeSettingsTab) && (
-                    <div className="p-6 border-t border-purple-500/20 bg-black/40">
-                      <div className="flex flex-wrap items-center justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                          <button
-                            onClick={saveSettings}
-                            disabled={!hasChanges || saving}
-                            className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all ${
-                              hasChanges && !saving
-                                ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-lg'
-                                : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                            }`}
-                          >
-                            {saving ? (
-                              <>
-                                <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
-                                Saving...
-                              </>
-                            ) : (
-                              <>
-                                <Save className="w-4 h-4" />
-                                Save Changes
-                              </>
-                            )}
-                          </button>
-                          
-                          <button
-                            onClick={resetToDefaults}
-                            disabled={saving}
-                            className="flex items-center gap-2 px-6 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 disabled:text-gray-400 text-white rounded-lg font-medium transition-all"
-                          >
-                            <RotateCcw className="w-4 h-4" />
-                            Reset to Defaults
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
+              <div>
+                <h2 style={{
+                  fontSize: '26px',
+                  fontWeight: '700',
+                  color: '#fff',
+                  fontFamily: 'Orbitron, monospace',
+                  marginBottom: '4px',
+                  letterSpacing: '0.5px'
+                }}>
+                  {settingsTabs.find(t => t.id === activeSettingsTab)?.label || 'Settings'}
+                </h2>
+                <p style={{ color: '#9ca3af', fontSize: '14px', margin: 0 }}>
+                  Configure system settings for this category
+                </p>
               </div>
             </div>
-          )}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: 'rgba(147, 51, 234, 0.2)',
+              padding: '10px 16px',
+              borderRadius: '12px',
+              border: '1px solid rgba(147, 51, 234, 0.3)'
+            }}>
+              <Database size={18} style={{ color: '#a855f7' }} />
+              <span style={{ color: '#a855f7', fontSize: '14px', fontWeight: '700' }}>
+                {Object.keys(settings[activeSettingsTab as keyof SystemSettings] || {}).length} Active
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Settings Content */}
+        <div style={{ padding: '32px' }}>
+          {renderSettingsSection(activeSettingsTab)}
+        </div>
+
+        {/* Enhanced Action Buttons */}
+        {!['monitoring', 'feature_flags'].includes(activeSettingsTab) && (
+          <div style={{
+            padding: '24px 32px',
+            borderTop: '1px solid rgba(147, 51, 234, 0.2)',
+            background: 'rgba(0, 0, 0, 0.4)'
+          }}>
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '16px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <button
+                  onClick={saveSettings}
+                  disabled={!hasChanges || saving}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '14px 28px',
+                    borderRadius: '12px',
+                    border: 'none',
+                    cursor: hasChanges && !saving ? 'pointer' : 'not-allowed',
+                    background: hasChanges && !saving
+                      ? 'linear-gradient(135deg, #9333ea, #ec4899)'
+                      : 'rgba(107, 114, 128, 0.3)',
+                    color: hasChanges && !saving ? '#fff' : '#6b7280',
+                    fontWeight: '600',
+                    fontSize: '14px',
+                    transition: 'all 0.3s ease',
+                    boxShadow: hasChanges && !saving ? '0 4px 15px rgba(147, 51, 234, 0.4)' : 'none'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (hasChanges && !saving) {
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = '0 6px 20px rgba(147, 51, 234, 0.6)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (hasChanges && !saving) {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 4px 15px rgba(147, 51, 234, 0.4)';
+                    }
+                  }}
+                >
+                  {saving ? (
+                    <>
+                      <div style={{
+                        width: '16px',
+                        height: '16px',
+                        border: '2px solid rgba(255, 255, 255, 0.2)',
+                        borderTopColor: '#fff',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }} />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={18} />
+                      Save Changes
+                    </>
+                  )}
+                </button>
+                
+                <button
+                  onClick={resetToDefaults}
+                  disabled={saving}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '14px 24px',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(249, 115, 22, 0.3)',
+                    background: 'rgba(249, 115, 22, 0.1)',
+                    color: '#f97316',
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    fontWeight: '600',
+                    fontSize: '14px',
+                    transition: 'all 0.3s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!saving) {
+                      e.currentTarget.style.background = 'rgba(249, 115, 22, 0.2)';
+                      e.currentTarget.style.borderColor = 'rgba(249, 115, 22, 0.5)';
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!saving) {
+                      e.currentTarget.style.background = 'rgba(249, 115, 22, 0.1)';
+                      e.currentTarget.style.borderColor = 'rgba(249, 115, 22, 0.3)';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                    }
+                  }}
+                >
+                  <RotateCcw size={18} />
+                  Reset to Defaults
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+)}
         </div>
       </div>
 
@@ -825,6 +1254,17 @@ export default function AdminDashboard() {
           from { opacity: 0; transform: translateY(20px); }
           to { opacity: 1; transform: translateY(0); }
         }
+
+        @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
       `}</style>
     </div>
   );
