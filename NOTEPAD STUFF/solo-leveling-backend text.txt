@@ -41,7 +41,13 @@ model User {
   user_active_quests                                                             user_active_quests[]
   user_custom_quests                                                             user_custom_quests[]
   user_sessions                                                                  user_sessions[]
-  user_stats                                                                     user_stats[]
+  user_stats                                 
+  admin_ip_whitelist_created    AdminIpWhitelist[]
+  feature_flags_created         FeatureFlag[]
+  performance_logs              PerformanceLog[]
+  user_analytics                UserAnalytics[]
+  system_error_logs_user        SystemErrorLog[] @relation("SystemErrorLogUser")
+  system_error_logs_resolver    SystemErrorLog[] @relation("SystemErrorLogResolver")                                    user_stats[]
 
   @@index([email], map: "idx_email")
   @@index([user_type], map: "idx_user_type")
@@ -567,6 +573,102 @@ enum quest_completion_history_verification_method {
   gps
   app_integration
 }
+model AdminIpWhitelist {
+  whitelist_id Int       @id @default(autoincrement())
+  ip_address   String    @db.VarChar(45)
+  ip_range     String?   @db.VarChar(18)
+  description  String?   @db.VarChar(255)
+  created_by   Int?
+  created_at   DateTime? @default(now()) @db.Timestamp(0)
+  is_active    Boolean?  @default(true)
+  creator      User?     @relation(fields: [created_by], references: [user_id], onDelete: SetNull)
+
+  @@index([ip_address], map: "idx_ip")
+  @@index([is_active], map: "idx_active")
+  @@map("admin_ip_whitelist")
+}
+
+model FeatureFlag {
+  flag_id             Int       @id @default(autoincrement())
+  flag_key            String    @unique @db.VarChar(100)
+  flag_name           String    @db.VarChar(255)
+  description         String?   @db.Text
+  is_enabled          Boolean?  @default(false)
+  rollout_percentage  Int?      @default(0)
+  target_user_types   Json?
+  conditions          Json?
+  created_by          Int?
+  created_at          DateTime? @default(now()) @db.Timestamp(0)
+  updated_at          DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  creator             User?     @relation(fields: [created_by], references: [user_id], onDelete: SetNull)
+
+  @@index([flag_key], map: "idx_key")
+  @@index([is_enabled], map: "idx_enabled")
+  @@map("feature_flags")
+}
+
+model PerformanceLog {
+  log_id           Int       @id @default(autoincrement())
+  endpoint         String    @db.VarChar(255)
+  method           String    @db.VarChar(10)
+  response_time_ms Int
+  status_code      Int
+  user_id          Int?
+  ip_address       String?   @db.VarChar(45)
+  user_agent       String?   @db.Text
+  created_at       DateTime? @default(now()) @db.Timestamp(0)
+  user             User?     @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
+
+  @@index([endpoint], map: "idx_endpoint")
+  @@index([response_time_ms], map: "idx_response_time")
+  @@index([created_at], map: "idx_created")
+  @@map("performance_logs")
+}
+
+model UserAnalytics {
+  analytics_id Int       @id @default(autoincrement())
+  user_id      Int?
+  session_id   String?   @db.VarChar(255)
+  event_type   String    @db.VarChar(50)
+  event_data   Json?
+  page_url     String?   @db.VarChar(500)
+  referrer     String?   @db.VarChar(500)
+  device_info  Json?
+  ip_address   String?   @db.VarChar(45)
+  created_at   DateTime? @default(now()) @db.Timestamp(0)
+  user         User?     @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
+
+  @@index([user_id], map: "idx_user")
+  @@index([event_type], map: "idx_event_type")
+  @@index([session_id], map: "idx_session")
+  @@index([created_at], map: "idx_created")
+  @@map("user_analytics")
+}
+
+model SystemErrorLog {
+  error_id      Int       @id @default(autoincrement())
+  error_level   String    @db.VarChar(20)
+  error_message String    @db.Text
+  error_stack   String?   @db.Text
+  endpoint      String?   @db.VarChar(255)
+  method        String?   @db.VarChar(10)
+  user_id       Int?
+  request_data  Json?
+  ip_address    String?   @db.VarChar(45)
+  user_agent    String?   @db.Text
+  resolved      Boolean?  @default(false)
+  resolved_by   Int?
+  resolved_at   DateTime? @db.Timestamp(0)
+  created_at    DateTime? @default(now()) @db.Timestamp(0)
+  user          User?     @relation("SystemErrorLogUser", fields: [user_id], references: [user_id], onDelete: SetNull)
+  resolver      User?     @relation("SystemErrorLogResolver", fields: [resolved_by], references: [user_id], onDelete: SetNull)
+
+  @@index([error_level], map: "idx_level")
+  @@index([resolved], map: "idx_resolved")
+  @@index([created_at], map: "idx_created")
+  @@map("system_error_logs")
+}
+
 
 
 
@@ -1315,6 +1417,7 @@ src/controller/authController.ts
 import { Request, Response } from 'express';
 import pool from '../config/database';
 import prisma from '../config/prisma'; 
+import { initializeNewUserQuests } from '../schedulers/questScheduler';
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const fs = require('fs').promises;
@@ -1371,32 +1474,19 @@ const validatePassword = (password: string): { isValid: boolean; message?: strin
   return { isValid: true };
 };
 
+// Update your signup function in authController.ts with better error handling:
+
 export const signup = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   
   try {
     await connection.beginTransaction();
     
-    const { 
-      email, 
-      username, 
-      password, 
-      user_type, 
-      full_name, 
-      field_of_interest, 
-      commitment_level, 
-      experience_level 
-    } = req.body;
+    const { email, username, password, user_type, full_name, field_of_interest, commitment_level, experience_level } = req.body;
     
-const passwordValidation = validatePassword(password);
-    if (!passwordValidation.isValid) {
-      await connection.rollback();
-      return res.status(400).json({ error: passwordValidation.message });
-    }
-
-    // Check if user exists
+    // Check if user already exists
     const [existing]: any = await connection.execute(
-      'SELECT user_id FROM users WHERE email = ? OR username = ?',
+      'SELECT user_id, email, username FROM users WHERE email = ? OR username = ?',
       [email, username]
     );
     
@@ -1410,14 +1500,14 @@ const passwordValidation = validatePassword(password);
     
     // Handle profile photo
     let profilePhotoUrl = null;
-if (req.file) {
-  const file = req.file as any;
- profilePhotoUrl = `/uploads/profiles/${file.filename}`;
-
-  // Move file from temp to profiles
-  const oldPath = file.path;
-  const newPath = `uploads/profiles/${file.filename}`;
-  await fs.rename(oldPath, newPath);
+    if (req.file) {
+      const file = req.file as any;
+      profilePhotoUrl = `/uploads/profiles/${file.filename}`;
+      
+      // Move file from temp to profiles
+      const oldPath = file.path;
+      const newPath = `uploads/profiles/${file.filename}`;
+      await fs.rename(oldPath, newPath);
     }
     
     // Create user
@@ -1427,21 +1517,46 @@ if (req.file) {
     );
     
     const userId = userResult.insertId;
+    console.log(`Created user with ID: ${userId}`);
     
     // Create profile based on user type
     if (user_type === 'adventurer') {
-      await connection.execute(
-        'INSERT INTO adventurer_profiles (user_id, full_name, field_of_interest, commitment_level, experience_level) VALUES (?, ?, ?, ?, ?)',
-        [userId, full_name, field_of_interest, commitment_level, experience_level]
+      // Check if profile already exists (safety check)
+      const [existingProfile]: any = await connection.execute(
+        'SELECT user_id FROM adventurer_profiles WHERE user_id = ?',
+        [userId]
       );
+      
+      if (existingProfile.length === 0) {
+        await connection.execute(
+          'INSERT INTO adventurer_profiles (user_id, full_name, field_of_interest, commitment_level, experience_level) VALUES (?, ?, ?, ?, ?)',
+          [userId, full_name, field_of_interest, commitment_level, experience_level]
+        );
+        console.log(`Created adventurer profile for user ${userId}`);
+      } else {
+        console.log(`Adventurer profile already exists for user ${userId}`);
+      }
+      
     } else if (user_type === 'coach') {
-      await connection.execute(
-        'INSERT INTO coach_profiles (user_id, full_name, specialization) VALUES (?, ?, ?)',
-        [userId, full_name, field_of_interest]
+      // Check if profile already exists (safety check)
+      const [existingProfile]: any = await connection.execute(
+        'SELECT user_id FROM coach_profiles WHERE user_id = ?',
+        [userId]
       );
+      
+      if (existingProfile.length === 0) {
+        await connection.execute(
+          'INSERT INTO coach_profiles (user_id, full_name, specialization) VALUES (?, ?, ?)',
+          [userId, full_name, field_of_interest]
+        );
+        console.log(`Created coach profile for user ${userId}`);
+      } else {
+        console.log(`Coach profile already exists for user ${userId}`);
+      }
     }
     
     await connection.commit();
+    console.log(`Successfully completed signup for user ${userId}`);
     
     // Generate token
     const token = jwt.sign(
@@ -1459,15 +1574,7 @@ if (req.file) {
     } catch (logError) {
       console.warn('Failed to log signup activity:', logError);
     }
-    console.log("DEBUG signup user response:", {
-  user_id: userId,
-  email,
-  username,
-  user_type,
-  profile_photo_url: profilePhotoUrl
-    ? `${process.env.BASE_URL || 'http://localhost:5000'}${profilePhotoUrl}`
-    : null
-});
+    
     res.status(201).json({
       message: 'User created successfully',
       token,
@@ -1477,20 +1584,19 @@ if (req.file) {
         username,
         user_type,
         profile_photo_url: profilePhotoUrl
-         ? `${process.env.BASE_URL || 'http://localhost:5000'}${profilePhotoUrl}`
-      : null
+          ? `${process.env.BASE_URL || 'http://localhost:5000'}${profilePhotoUrl}`
+          : null
       }
     });
     
   } catch (error: any) {
     await connection.rollback();
     console.error('Signup error:', error);
-    res.status(500).json({ error: 'Failed to create user' });
+    res.status(500).json({ error: 'Failed to create account. Please try again.' });
   } finally {
     connection.release();
   }
 };
-
 export const login = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   
@@ -1915,6 +2021,7 @@ export const getLoginStats = async (req: Request, res: Response) => {
 
 
 
+
 src/controller/coachController.ts
 import { Request, Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
@@ -2197,6 +2304,106 @@ src/controller/questController.ts
 import { Request, Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import pool from '../config/database';
+interface QuestTemplate {
+  quest_template_id: number;
+  quest_title: string;
+  quest_description: string;
+  base_xp: number;
+  difficulty: string;
+  related_stat: string;
+  field_name: string;
+  quest_type: string;
+  is_active: boolean;
+}
+/**
+ * Fisher-Yates Shuffle Algorithm - for perfect randomization
+ * @param array - Array to shuffle
+ * @returns Shuffled array
+ */
+export const shuffleArray = <T>(array: T[]): T[] => {
+  const shuffled = [...array]; // Create a copy
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+};
+
+/**
+ * Advanced uniqueness checker - checks for similar quest titles
+ * @param questTitle - Title to check
+ * @param existingTitles - Set of existing titles
+ * @returns boolean - true if unique enough
+ */
+export const isQuestUnique = (questTitle: string, existingTitles: Set<string>): boolean => {
+  const normalizedTitle = questTitle.toLowerCase().trim();
+  
+  // Direct match check
+  if (existingTitles.has(normalizedTitle)) {
+    return false;
+  }
+  
+  // Similar title check (optional - prevents very similar quests)
+  for (const existingTitle of existingTitles) {
+    // Check if titles are too similar (more than 70% similar)
+    const similarity = calculateSimilarity(normalizedTitle, existingTitle);
+    if (similarity > 0.7) {
+      console.log(`Skipping similar quest: "${questTitle}" (${similarity}% similar to "${existingTitle}")`);
+      return false;
+    }
+  }
+  
+  return true;
+};
+
+/**
+ * Calculate similarity between two strings (simple version)
+ * @param str1 - First string
+ * @param str2 - Second string
+ * @returns number - Similarity score (0-1)
+ */
+export const calculateSimilarity = (str1: string, str2: string): number => {
+  const longer = str1.length > str2.length ? str1 : str2;
+  const shorter = str1.length > str2.length ? str2 : str1;
+  
+  if (longer.length === 0) return 1.0;
+  
+  const distance = levenshteinDistance(longer, shorter);
+  return (longer.length - distance) / longer.length;
+};
+
+/**
+ * Levenshtein distance calculation
+ */
+export const levenshteinDistance = (str1: string, str2: string): number => {
+  const matrix = [];
+  
+  for (let i = 0; i <= str2.length; i++) {
+    matrix[i] = [i];
+  }
+  
+  for (let j = 0; j <= str1.length; j++) {
+    matrix[0][j] = j;
+  }
+  
+  for (let i = 1; i <= str2.length; i++) {
+    for (let j = 1; j <= str1.length; j++) {
+      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  
+  return matrix[str2.length][str1.length];
+};
+
+
 
 export const getDailyQuests = async (req: AuthRequest, res: Response) => {
   try {
@@ -2272,84 +2479,106 @@ export const generateDailyQuests = async (req: AuthRequest, res: Response) => {
     
     const fieldOfInterest = userProfile[0].field_of_interest;
     
-    // Clear existing active daily quests for this user
+    // Clear existing active daily quests
     await connection.execute(
       'DELETE FROM user_active_quests WHERE user_id = ? AND quest_type = "daily"',
       [userId]
     );
     
-    // Get available quest templates for user's field
+    // 🎯 STEP 1: Get all available quests (already randomized by database)
     const [templates]: any = await connection.execute(
       `SELECT * FROM quest_templates 
        WHERE field_name = ? AND quest_type = 'daily' AND is_active = 1 
-       ORDER BY RAND() 
-       LIMIT 8`,
+       ORDER BY RAND()`,
       [fieldOfInterest]
     );
     
-    // If no specific templates found, get general templates
-    if (templates.length === 0) {
-      const [generalTemplates]: any = await connection.execute(
-        `SELECT * FROM quest_templates 
-         WHERE quest_type = 'daily' AND is_active = 1 
-         ORDER BY RAND() 
-         LIMIT 8`
-      );
-      templates.push(...generalTemplates);
+    console.log(`Found ${templates.length} quest templates for ${fieldOfInterest}`);
+    
+    // 🎯 STEP 2: Apply additional randomization with JavaScript
+    const shuffledTemplates = shuffleArray(templates as QuestTemplate[]);
+    
+    // 🎯 STEP 3: Select unique quests with advanced checking
+    const selectedQuests: QuestTemplate[] = [];
+    const usedQuestIds = new Set<number>();
+    const usedQuestTitles = new Set<string>();
+    
+    for (const template of shuffledTemplates) {
+      if (selectedQuests.length >= 8) break;
+      
+      // Check ID uniqueness
+      if (usedQuestIds.has(template.quest_template_id)) continue;
+      
+      // Check title uniqueness (with similarity checking)
+      if (!isQuestUnique(template.quest_title, usedQuestTitles)) continue;
+      
+      // Quest is unique - add it!
+      selectedQuests.push(template);
+      usedQuestIds.add(template.quest_template_id);
+      usedQuestTitles.add(template.quest_title.toLowerCase().trim());
+      
+      console.log(`✅ Selected unique quest: "${template.quest_title}"`);
     }
     
-    // If still no templates, create default ones
-    if (templates.length === 0) {
-      const defaultQuests = [
-        { title: 'Morning Routine', xp: 25, difficulty: 'easy', stat: 'Stamina' },
-        { title: 'Study/Practice for 30 minutes', xp: 35, difficulty: 'medium', stat: 'Intelligence' },
-        { title: 'Physical Exercise', xp: 30, difficulty: 'medium', stat: 'Strength' },
-        { title: 'Skill Development', xp: 40, difficulty: 'medium', stat: 'Intelligence' },
-        { title: 'Healthy Meal Planning', xp: 20, difficulty: 'easy', stat: 'Wisdom' },
-        { title: 'Goal Review & Planning', xp: 25, difficulty: 'easy', stat: 'Wisdom' },
-        { title: 'Creative Activity', xp: 30, difficulty: 'medium', stat: 'Charisma' },
-        { title: 'Evening Reflection', xp: 20, difficulty: 'easy', stat: 'Wisdom' }
-      ];
+    // 🎯 STEP 4: If we need more quests, get from other fields
+    if (selectedQuests.length < 8) {
+      console.log(`Need ${8 - selectedQuests.length} more quests from other fields`);
       
-      for (const quest of defaultQuests) {
-        await connection.execute(
-          `INSERT INTO user_active_quests 
-           (user_id, quest_template_id, quest_type, assigned_date, expires_at) 
-           VALUES (?, NULL, 'daily', CURDATE(), DATE_ADD(NOW(), INTERVAL 1 DAY))`,
-          [userId]
-        );
+      const [backupTemplates]: any = await connection.execute(
+        `SELECT * FROM quest_templates 
+         WHERE quest_type = 'daily' AND is_active = 1 
+         AND field_name != ?
+         ORDER BY RAND() 
+         LIMIT ?`,
+        [fieldOfInterest, 20] // Get more than needed to ensure uniqueness
+      );
+      
+      const shuffledBackups = shuffleArray(backupTemplates as QuestTemplate[]);
+      
+      for (const template of shuffledBackups) {
+        if (selectedQuests.length >= 8) break;
+        
+        if (!usedQuestIds.has(template.quest_template_id) && 
+            isQuestUnique(template.quest_title, usedQuestTitles)) {
+          
+          selectedQuests.push(template);
+          usedQuestIds.add(template.quest_template_id);
+          usedQuestTitles.add(template.quest_title.toLowerCase().trim());
+          
+          console.log(`✅ Added backup quest: "${template.quest_title}" from ${template.field_name}`);
+        }
       }
-    } else {
-      // Assign quests from templates
-      for (const template of templates) {
-        await connection.execute(
-          `INSERT INTO user_active_quests 
-           (user_id, quest_template_id, quest_type, assigned_date, expires_at) 
-           VALUES (?, ?, 'daily', CURDATE(), DATE_ADD(NOW(), INTERVAL 1 DAY))`,
-          [userId, template.quest_template_id]
-        );
-      }
+    }
+    
+    // 🎯 STEP 5: Final randomization of selected quests
+    const finalRandomQuests = shuffleArray(selectedQuests).slice(0, 8);
+    
+    // 🎯 STEP 6: Insert the random unique quests
+    for (const template of finalRandomQuests) {
+      await connection.execute(
+        `INSERT INTO user_active_quests 
+         (user_id, quest_template_id, quest_type, assigned_date, expires_at) 
+         VALUES (?, ?, 'daily', CURDATE(), DATE_ADD(NOW(), INTERVAL 1 DAY))`,
+        [userId, template.quest_template_id]
+      );
     }
     
     await connection.commit();
     
-    // Fetch the newly created quests
+    // Fetch and return the results
     const [newQuests]: any = await connection.execute(
       `SELECT 
         uaq.*,
         COALESCE(qt.quest_title, 
-          CASE uaq.quest_template_id
-            WHEN NULL THEN 
-              CASE ROW_NUMBER() OVER (ORDER BY uaq.active_quest_id)
-                WHEN 1 THEN 'Morning Routine'
-                WHEN 2 THEN 'Study/Practice for 30 minutes'
-                WHEN 3 THEN 'Physical Exercise'
-                WHEN 4 THEN 'Skill Development'
-                WHEN 5 THEN 'Healthy Meal Planning'
-                WHEN 6 THEN 'Goal Review & Planning'
-                WHEN 7 THEN 'Creative Activity'
-                WHEN 8 THEN 'Evening Reflection'
-              END
+          CASE ROW_NUMBER() OVER (ORDER BY uaq.active_quest_id)
+            WHEN 1 THEN 'Morning Routine'
+            WHEN 2 THEN 'Study/Practice for 30 minutes'
+            WHEN 3 THEN 'Physical Exercise'
+            WHEN 4 THEN 'Skill Development'
+            WHEN 5 THEN 'Healthy Meal Planning'
+            WHEN 6 THEN 'Goal Review & Planning'
+            WHEN 7 THEN 'Creative Activity'
+            WHEN 8 THEN 'Evening Reflection'
           END
         ) as quest_title,
         COALESCE(qt.quest_description, 'Complete this daily quest to gain XP') as quest_description,
@@ -2369,13 +2598,20 @@ export const generateDailyQuests = async (req: AuthRequest, res: Response) => {
         COALESCE(qt.related_stat, 'Strength') as related_stat
       FROM user_active_quests uaq
       LEFT JOIN quest_templates qt ON uaq.quest_template_id = qt.quest_template_id
-      WHERE uaq.user_id = ? AND uaq.quest_type = 'daily'`,
+      WHERE uaq.user_id = ? AND uaq.quest_type = 'daily'
+      ORDER BY RAND()`, // One final randomization of the display order
       [userId]
     );
     
+    console.log(`🎯 SUCCESS: Generated ${newQuests.length} unique random daily quests`);
+    
     res.json({ 
-      message: 'Daily quests generated successfully', 
-      quests: newQuests 
+      message: 'Random unique daily quests generated successfully!', 
+      quests: newQuests,
+      count: newQuests.length,
+      fieldOfInterest: fieldOfInterest,
+      uniqueCount: new Set(newQuests.map((q: any) => q.quest_title)).size,
+      randomSeed: Date.now() // For debugging randomness
     });
     
   } catch (error: any) {
@@ -2386,7 +2622,6 @@ export const generateDailyQuests = async (req: AuthRequest, res: Response) => {
     connection.release();
   }
 };
-
 export const generateWeeklyQuests = async (req: AuthRequest, res: Response) => {
   const connection = await pool.getConnection();
   
@@ -2955,6 +3190,233 @@ const updateUserStreak = async (connection: any, userId: number, questType: stri
     return null;
   }
 };
+
+// Add these functions to your questController.ts
+
+/**
+ * Automatic Quest Expiration and Renewal System
+ * This runs daily to expire old quests and generate fresh ones
+ */
+export const processQuestExpiration = async (req: AuthRequest, res: Response) => {
+  const connection = await pool.getConnection();
+  
+  try {
+    await connection.beginTransaction();
+    
+    console.log('🕒 Starting automatic quest expiration process...');
+    
+    // Step 1: Mark all expired daily quests as expired (not completed)
+    const [expiredDaily]: any = await connection.execute(
+      `UPDATE user_active_quests 
+       SET is_completed = FALSE, 
+           expires_at = NOW() - INTERVAL 1 SECOND
+       WHERE quest_type = 'daily' 
+       AND expires_at < NOW() 
+       AND is_completed = FALSE`
+    );
+    
+    console.log(`⏰ Expired ${expiredDaily.affectedRows} uncompleted daily quests`);
+    
+    // Step 2: Get all users who need new daily quests
+    const [usersNeedingQuests]: any = await connection.execute(
+      `SELECT DISTINCT u.user_id, ap.field_of_interest, u.email
+       FROM users u
+       JOIN adventurer_profiles ap ON u.user_id = ap.user_id
+       LEFT JOIN user_active_quests uaq ON u.user_id = uaq.user_id 
+         AND uaq.quest_type = 'daily' 
+         AND uaq.expires_at > NOW()
+       WHERE u.user_type = 'adventurer' 
+       AND uaq.user_id IS NULL`
+    );
+    
+    console.log(`👥 Found ${usersNeedingQuests.length} users needing new daily quests`);
+    
+    let renewedUsers = 0;
+    
+    // Step 3: Generate fresh daily quests for each user
+    for (const user of usersNeedingQuests) {
+      try {
+        const userId = user.user_id;
+        const fieldOfInterest = user.field_of_interest;
+        
+        // Generate new unique daily quests using our improved algorithm
+        const newQuests = await generateUniqueQuestsForUser(connection, userId, fieldOfInterest);
+        
+        if (newQuests.length > 0) {
+          console.log(`✅ Renewed ${newQuests.length} daily quests for user ${user.email}`);
+          renewedUsers++;
+        }
+        
+      } catch (userError) {
+        console.error(`❌ Error renewing quests for user ${user.email}:`, userError);
+      }
+    }
+    
+    // Step 4: Clean up very old expired quests (optional - keeps database clean)
+    const [cleanedUp]: any = await connection.execute(
+      `DELETE FROM user_active_quests 
+       WHERE expires_at < NOW() - INTERVAL 7 DAY 
+       AND is_completed = FALSE`
+    );
+    
+    console.log(`🧹 Cleaned up ${cleanedUp.affectedRows} old expired quests`);
+    
+    await connection.commit();
+    
+    const summary = {
+      message: 'Quest expiration process completed successfully',
+      expiredQuests: expiredDaily.affectedRows,
+      usersRenewed: renewedUsers,
+      totalUsers: usersNeedingQuests.length,
+      oldQuestsCleaned: cleanedUp.affectedRows,
+      processTime: new Date().toISOString()
+    };
+    
+    console.log('🎯 Quest expiration summary:', summary);
+    
+    res.json(summary);
+    
+  } catch (error: any) {
+    await connection.rollback();
+    console.error('Quest expiration process error:', error);
+    res.status(500).json({ error: 'Failed to process quest expiration' });
+  } finally {
+    connection.release();
+  }
+};
+
+/**
+ * Helper function to generate unique quests for a specific user
+ * Extracted logic for reuse in expiration process
+ */
+const generateUniqueQuestsForUser = async (connection: any, userId: number, fieldOfInterest: string) => {
+  try {
+    // Get available quest templates for user's field
+    const [templates]: any = await connection.execute(
+      `SELECT * FROM quest_templates 
+       WHERE field_name = ? AND quest_type = 'daily' AND is_active = 1 
+       ORDER BY RAND()`,
+      [fieldOfInterest]
+    );
+    
+    // Apply uniqueness selection logic
+    const shuffledTemplates = shuffleArray(templates as QuestTemplate[]);
+    const selectedQuests: QuestTemplate[] = [];
+    const usedQuestIds = new Set<number>();
+    const usedQuestTitles = new Set<string>();
+    
+    for (const template of shuffledTemplates) {
+      if (selectedQuests.length >= 8) break;
+      
+      if (usedQuestIds.has(template.quest_template_id)) continue;
+      if (!isQuestUnique(template.quest_title, usedQuestTitles)) continue;
+      
+      selectedQuests.push(template);
+      usedQuestIds.add(template.quest_template_id);
+      usedQuestTitles.add(template.quest_title.toLowerCase().trim());
+    }
+    
+    // Get backup quests from other fields if needed
+    if (selectedQuests.length < 8) {
+      const [backupTemplates]: any = await connection.execute(
+        `SELECT * FROM quest_templates 
+         WHERE quest_type = 'daily' AND is_active = 1 
+         AND field_name != ?
+         ORDER BY RAND() 
+         LIMIT ?`,
+        [fieldOfInterest, 20]
+      );
+      
+      const shuffledBackups = shuffleArray(backupTemplates as QuestTemplate[]);
+      
+      for (const template of shuffledBackups) {
+        if (selectedQuests.length >= 8) break;
+        
+        if (!usedQuestIds.has(template.quest_template_id) && 
+            isQuestUnique(template.quest_title, usedQuestTitles)) {
+          
+          selectedQuests.push(template);
+          usedQuestIds.add(template.quest_template_id);
+          usedQuestTitles.add(template.quest_title.toLowerCase().trim());
+        }
+      }
+    }
+    
+    // Insert the new unique quests
+    const finalQuests = shuffleArray(selectedQuests).slice(0, 8);
+    
+    for (const template of finalQuests) {
+      await connection.execute(
+        `INSERT INTO user_active_quests 
+         (user_id, quest_template_id, quest_type, assigned_date, expires_at) 
+         VALUES (?, ?, 'daily', CURDATE(), DATE_ADD(NOW(), INTERVAL 1 DAY))`,
+        [userId, template.quest_template_id]
+      );
+    }
+    
+    return finalQuests;
+    
+  } catch (error) {
+    console.error('Generate unique quests for user error:', error);
+    return [];
+  }
+};
+
+/**
+ * Manual trigger for quest expiration (for testing)
+ * In production, this should be called automatically via cron job
+ */
+export const triggerQuestReset = async (req: AuthRequest, res: Response) => {
+  // This is the same as processQuestExpiration but with different messaging
+  return processQuestExpiration(req, res);
+};
+
+/**
+ * Check if current user needs quest renewal
+ * Useful for frontend to know when to show "generate new quests" button
+ */
+export const checkQuestStatus = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.user_id;
+    
+    const [activeQuests]: any = await pool.execute(
+      `SELECT COUNT(*) as active_count
+       FROM user_active_quests 
+       WHERE user_id = ? 
+       AND quest_type = 'daily' 
+       AND expires_at > NOW() 
+       AND is_completed = FALSE`,
+      [userId]
+    );
+    
+    const [expiredQuests]: any = await pool.execute(
+      `SELECT COUNT(*) as expired_count
+       FROM user_active_quests 
+       WHERE user_id = ? 
+       AND quest_type = 'daily' 
+       AND expires_at < NOW() 
+       AND is_completed = FALSE`,
+      [userId]
+    );
+    
+    const hasActiveQuests = activeQuests[0].active_count > 0;
+    const hasExpiredQuests = expiredQuests[0].expired_count > 0;
+    
+    res.json({
+      hasActiveQuests,
+      hasExpiredQuests,
+      activeQuestCount: activeQuests[0].active_count,
+      expiredQuestCount: expiredQuests[0].expired_count,
+      needsRenewal: !hasActiveQuests || hasExpiredQuests,
+      canGenerateNew: !hasActiveQuests
+    });
+    
+  } catch (error: any) {
+    console.error('Check quest status error:', error);
+    res.status(500).json({ error: 'Failed to check quest status' });
+  }
+};
+
 
 
 
@@ -3711,11 +4173,321 @@ export const getCoachDetails = async (req: AuthRequest, res: Response) => {
 
 
 
+
+src/middleware/adminLogger.ts
+// File: backend/middleware/adminLogger.ts
+import { Request, Response, NextFunction } from 'express';
+import pool from '../config/database';
+import { AuthRequest } from './auth';
+
+/**
+ * Middleware to log admin actions
+ * @param actionType - Type of action being performed
+ * @returns Express middleware function
+ */
+export const logAdminAction = (actionType: string) => {
+  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+    // Use res.on('finish') instead of overriding res.end
+    res.on('finish', async () => {
+      // Only log successful requests
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        const connection = await pool.getConnection();
+        
+        try {
+          const actionDetails = {
+            method: req.method,
+            url: req.originalUrl,
+            body: req.method !== 'GET' ? req.body : undefined,
+            query: req.query,
+            status_code: res.statusCode,
+            timestamp: new Date().toISOString()
+          };
+
+          // Remove sensitive data from logging
+          if (actionDetails.body) {
+            const sanitizedBody = { ...actionDetails.body };
+            delete sanitizedBody.password;
+            delete sanitizedBody.password_hash;
+            delete sanitizedBody.token;
+            actionDetails.body = sanitizedBody;
+          }
+
+          await connection.execute(
+            'INSERT INTO admin_action_logs (admin_user_id, action_type, target_type, action_details, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?)',
+            [
+              req.user?.user_id || null,
+              actionType,
+              'system_settings',
+              JSON.stringify(actionDetails),
+              req.ip || req.connection.remoteAddress,
+              req.get('User-Agent') || 'Unknown'
+            ]
+          );
+
+          // Also update the admin profile's last action
+          if (req.user?.user_id) {
+            await connection.execute(
+              'UPDATE admin_profiles SET last_action = ?, last_action_date = CURRENT_TIMESTAMP WHERE user_id = ?',
+              [actionType, req.user.user_id]
+            );
+          }
+        } catch (error) {
+          console.error('Failed to log admin action:', error);
+        } finally {
+          connection.release();
+        }
+      }
+    });
+
+    next();
+  };
+};
+
+/**
+ * Enhanced error logging function
+ */
+export const logSystemError = async (error: any, req?: Request, user_id?: number) => {
+  const connection = await pool.getConnection();
+  
+  try {
+    await connection.execute(
+      'INSERT INTO system_error_logs (error_level, error_message, error_stack, endpoint, method, user_id, request_data, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        error.severity || 'error',
+        error.message || 'Unknown error',
+        error.stack || null,
+        req?.path || null,
+        req?.method || null,
+        user_id,
+        req ? JSON.stringify({
+          body: req.body,
+          query: req.query,
+          params: req.params
+        }) : null,
+        req?.ip || null,
+        req?.get('User-Agent') || null
+      ]
+    );
+  } catch (logError) {
+    console.error('Failed to log system error:', logError);
+  } finally {
+    connection.release();
+  }
+};
+
+/**
+ * Analytics event logger
+ */
+export const logUserAnalytics = async (
+  userId: number | null, 
+  sessionId: string | null, 
+  eventType: string, 
+  eventData: any = {}, 
+  req?: Request
+) => {
+  const connection = await pool.getConnection();
+  
+  try {
+    // Check if analytics is enabled
+    const [analyticsEnabled]: any = await connection.execute(
+      'SELECT setting_value FROM system_settings WHERE setting_key = ?',
+      ['user_analytics_enabled']
+    );
+
+    if (analyticsEnabled.length > 0 && analyticsEnabled[0].setting_value === 'true') {
+      await connection.execute(
+        'INSERT INTO user_analytics (user_id, session_id, event_type, event_data, page_url, referrer, device_info, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          userId,
+          sessionId,
+          eventType,
+          JSON.stringify(eventData),
+          req?.originalUrl || null,
+          req?.get('Referrer') || null,
+          req ? JSON.stringify({
+            user_agent: req.get('User-Agent'),
+            accept_language: req.get('Accept-Language'),
+            accept_encoding: req.get('Accept-Encoding')
+          }) : null,
+          req?.ip || null
+        ]
+      );
+    }
+  } catch (error) {
+    console.error('Failed to log user analytics:', error);
+  } finally {
+    connection.release();
+  }
+};
+
+/**
+ * Performance monitoring middleware - simplified version
+ */
+export const performanceMonitor = async (req: Request, res: Response, next: NextFunction) => {
+  const startTime = Date.now();
+
+  // Use res.on('finish') to capture response time
+  res.on('finish', async () => {
+    const responseTime = Date.now() - startTime;
+    
+    // Log performance if monitoring is enabled
+    const connection = await pool.getConnection();
+    
+    try {
+      const [monitoringEnabled]: any = await connection.execute(
+        'SELECT setting_value FROM system_settings WHERE setting_key = ?',
+        ['performance_monitoring_enabled']
+      );
+
+      if (monitoringEnabled.length > 0 && monitoringEnabled[0].setting_value === 'true') {
+        const [threshold]: any = await connection.execute(
+          'SELECT setting_value FROM system_settings WHERE setting_key = ?',
+          ['performance_alert_threshold']
+        );
+
+        const alertThreshold = threshold.length > 0 ? parseInt(threshold[0].setting_value) : 500;
+
+        // Always log performance data
+        await connection.execute(
+          'INSERT INTO performance_logs (endpoint, method, response_time_ms, status_code, user_id, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [
+            req.path,
+            req.method,
+            responseTime,
+            res.statusCode,
+            (req as AuthRequest).user?.user_id || null,
+            req.ip,
+            req.get('User-Agent')
+          ]
+        );
+
+        // Log as error if response time is too high
+        if (responseTime > alertThreshold) {
+          await logSystemError({
+            message: `Slow response detected: ${responseTime}ms for ${req.method} ${req.path}`,
+            severity: 'warn'
+          }, req, (req as AuthRequest).user?.user_id);
+        }
+      }
+    } catch (error) {
+      console.error('Performance monitoring error:', error);
+    } finally {
+      connection.release();
+    }
+  });
+
+  next();
+};
+
+/**
+ * Data cleanup utility
+ */
+export const cleanupOldData = async () => {
+  const connection = await pool.getConnection();
+  
+  try {
+    const [retentionSetting]: any = await connection.execute(
+      'SELECT setting_value FROM system_settings WHERE setting_key = ?',
+      ['data_retention_days']
+    );
+
+    const retentionDays = retentionSetting.length > 0 ? parseInt(retentionSetting[0].setting_value) : 90;
+    const cutoffDate = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+
+    // Clean up old performance logs
+    await connection.execute(
+      'DELETE FROM performance_logs WHERE created_at < ?',
+      [cutoffDate]
+    );
+
+    // Clean up old analytics data
+    await connection.execute(
+      'DELETE FROM user_analytics WHERE created_at < ?',
+      [cutoffDate]
+    );
+
+    // Clean up resolved error logs older than retention period
+    await connection.execute(
+      'DELETE FROM system_error_logs WHERE created_at < ? AND resolved = true',
+      [cutoffDate]
+    );
+
+    console.log(`Data cleanup completed. Removed data older than ${retentionDays} days.`);
+
+  } catch (error) {
+    console.error('Data cleanup error:', error);
+  } finally {
+    connection.release();
+  }
+};
+
+/**
+ * Feature flag checker
+ */
+export const checkFeatureFlag = async (flagKey: string, userId?: number, userType?: string): Promise<boolean> => {
+  const connection = await pool.getConnection();
+  
+  try {
+    const [flag]: any = await connection.execute(
+      'SELECT * FROM feature_flags WHERE flag_key = ?',
+      [flagKey]
+    );
+
+    if (flag.length === 0 || !flag[0].is_enabled) {
+      return false;
+    }
+
+    const flagData = flag[0];
+
+    // Check rollout percentage
+    if (flagData.rollout_percentage < 100) {
+      const userHash = userId ? 
+        userId.toString().split('').reduce((a: number, b: string) => {
+          a = ((a << 5) - a) + b.charCodeAt(0);
+          return a & a;
+        }, 0) : Math.random() * 100;
+      
+      if (Math.abs(userHash) % 100 >= flagData.rollout_percentage) {
+        return false;
+      }
+    }
+
+    // Check user type targeting
+    if (flagData.target_user_types && userType) {
+      let targetTypes: string[];
+      try {
+        targetTypes = Array.isArray(flagData.target_user_types) 
+          ? flagData.target_user_types 
+          : JSON.parse(flagData.target_user_types);
+      } catch {
+        targetTypes = [];
+      }
+      
+      if (targetTypes.length > 0 && !targetTypes.includes(userType)) {
+        return false;
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Feature flag check error:', error);
+    return false;
+  } finally {
+    connection.release();
+  }
+};
+
+
+
+
+
 src/middleware/auth.ts
 // src/middleware/auth.ts
 import { Request, Response, NextFunction } from 'express';
 import pool from '../config/database';
 const jwt = require('jsonwebtoken');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
 export interface AuthRequest extends Request {
   user?: any;
@@ -3994,6 +4766,127 @@ export const authRateLimit = (maxAttempts: number = 5, windowMs: number = 15 * 6
     next();
   };
 };
+export const requireAdmin = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  const connection = await pool.getConnection();
+  
+  try {
+    // User should already be authenticated via authenticate middleware
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    // Check if user is admin
+    if (req.user.user_type !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    // Handle hardcoded admin (skip database checks)
+    if (req.user.isHardcodedAdmin) {
+      return next();
+    }
+
+    // Optional: Check IP whitelist if enabled (for regular admin accounts)
+    const [ipWhitelistSetting]: any = await connection.execute(
+      'SELECT setting_value FROM system_settings WHERE setting_key = ?',
+      ['ip_whitelist_enabled']
+    );
+
+    if (ipWhitelistSetting.length > 0 && ipWhitelistSetting[0].setting_value === 'true') {
+      const clientIP = req.ip || req.connection.remoteAddress;
+      
+      const [whitelist]: any = await connection.execute(
+        'SELECT * FROM admin_ip_whitelist WHERE ip_address = ? AND is_active = true',
+        [clientIP]
+      );
+
+      if (whitelist.length === 0) {
+        // Log unauthorized access attempt
+        await connection.execute(
+          'INSERT INTO system_error_logs (error_level, error_message, endpoint, method, user_id, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [
+            'warn',
+            `Unauthorized admin access attempt from IP: ${clientIP}`,
+            req.path,
+            req.method,
+            req.user.user_id,
+            clientIP,
+            req.get('User-Agent')
+          ]
+        );
+
+        return res.status(403).json({ 
+          error: 'Access denied: IP not whitelisted' 
+        });
+      }
+    }
+
+    // Check admin profile exists
+    const [adminProfile]: any = await connection.execute(
+      'SELECT * FROM admin_profiles WHERE user_id = ?',
+      [req.user.user_id]
+    );
+
+    if (adminProfile.length === 0) {
+      return res.status(403).json({ 
+        error: 'Admin profile not found' 
+      });
+    }
+
+    // Attach admin profile to request for use in routes
+    req.user.adminProfile = adminProfile[0];
+    
+    next();
+  } catch (error) {
+    console.error('Admin auth middleware error:', error);
+    res.status(500).json({ error: 'Authentication error' });
+  } finally {
+    connection.release();
+  }
+};
+
+// Check specific admin permissions
+export const requirePermission = (permission: string) => {
+  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const adminProfile = req.user?.adminProfile;
+      
+      if (!adminProfile) {
+        return res.status(403).json({ error: 'Admin profile required' });
+      }
+
+      // SUPER_ADMIN has all permissions
+      if (adminProfile.access_level === 'SUPER_ADMIN') {
+        return next();
+      }
+
+      // Check specific permission
+      let permissions;
+      try {
+        permissions = typeof adminProfile.permissions === 'string' 
+          ? JSON.parse(adminProfile.permissions) 
+          : adminProfile.permissions;
+      } catch (e) {
+        permissions = {};
+      }
+
+      if (!permissions || !permissions[permission]) {
+        return res.status(403).json({ 
+          error: `Permission required: ${permission}` 
+        });
+      }
+
+      next();
+    } catch (error) {
+      console.error('Permission check error:', error);
+      res.status(500).json({ error: 'Permission check failed' });
+    }
+  };
+};
+module.exports = {
+  requireAdmin,
+  requirePermission
+};
+
 
 
 
@@ -4096,6 +4989,361 @@ router.get('/quests', getAllQuestsDetailed);
 
 // ==================== ADMIN LOGS ====================
 router.get('/logs', getAdminLogs);
+
+export default router;
+
+
+
+
+src/routes/admin/settings.ts
+// File: backend/routes/admin/settings.ts
+import express from 'express';
+import pool from '../../config/database';
+import { authenticate, requireAdmin, type AuthRequest } from '../../middleware/auth';
+import { logAdminAction } from '../../middleware/adminLogger';
+
+const router = express.Router();
+
+// Middleware to ensure admin access
+router.use(authenticate);
+router.use(requireAdmin);
+
+// GET /api/admin/settings - Get all system settings
+router.get('/', async (req: AuthRequest, res) => {
+  const connection = await pool.getConnection();
+  
+  try {
+    const [settings]: any = await connection.execute(
+      'SELECT * FROM system_settings ORDER BY setting_key ASC'
+    );
+
+    // Group settings by category for easier frontend handling
+    const categorizedSettings = {
+      quest_system: {},
+      level_progression: {},
+      security: {},
+      platform: {},
+      monitoring: {},
+      coach_system: {}
+    };
+
+    settings.forEach((setting: any) => {
+      const key = setting.setting_key;
+      let value = setting.setting_value;
+
+      // Parse values based on type
+      if (setting.setting_type === 'number') {
+        value = parseFloat(value);
+      } else if (setting.setting_type === 'boolean') {
+        value = value === 'true';
+      } else if (setting.setting_type === 'json') {
+        try {
+          value = JSON.parse(value);
+        } catch (e) {
+          value = setting.setting_value;
+        }
+      }
+
+      // Categorize settings
+      let category = 'platform'; // default
+      if (key.includes('quest') || key.includes('xp') || key.includes('streak')) {
+        category = 'quest_system';
+      } else if (key.includes('level') || key.includes('prestige') || key.includes('title')) {
+        category = 'level_progression';
+      } else if (key.includes('login') || key.includes('session') || key.includes('password') || key.includes('ip') || key.includes('two_factor')) {
+        category = 'security';
+      } else if (key.includes('theme') || key.includes('welcome') || key.includes('maintenance') || key.includes('logo') || key.includes('notification') || key.includes('background')) {
+        category = 'platform';
+      } else if (key.includes('monitoring') || key.includes('analytics') || key.includes('error') || key.includes('performance') || key.includes('retention') || key.includes('ab_testing')) {
+        category = 'monitoring';
+      } else if (key.includes('coach')) {
+        category = 'coach_system';
+      }
+
+      (categorizedSettings as any)[category][key] = {
+        value,
+        type: setting.setting_type,
+        description: setting.description
+      };
+    });
+
+    res.json({
+      success: true,
+      settings: categorizedSettings
+    });
+
+  } catch (error) {
+    console.error('Error fetching settings:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch settings'
+    });
+  } finally {
+    connection.release();
+  }
+});
+
+// PUT /api/admin/settings - Update system settings
+router.put('/', logAdminAction('settings_update'), async (req: AuthRequest, res) => {
+  const connection = await pool.getConnection();
+  
+  try {
+    await connection.beginTransaction();
+    
+    const { settings } = req.body;
+
+    if (!settings || typeof settings !== 'object') {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid settings data'
+      });
+    }
+
+    const updatePromises: Promise<any>[] = [];
+
+    // Process each category of settings
+    Object.entries(settings).forEach(([category, categorySettings]) => {
+      Object.entries(categorySettings as any).forEach(([key, settingData]: [string, any]) => {
+        let value = settingData.value;
+
+        // Convert value to string for database storage
+        if (typeof value === 'boolean') {
+          value = value.toString();
+        } else if (typeof value === 'number') {
+          value = value.toString();
+        } else if (typeof value === 'object') {
+          value = JSON.stringify(value);
+        }
+
+        updatePromises.push(
+          connection.execute(
+            `INSERT INTO system_settings (setting_key, setting_value, setting_type, description) 
+             VALUES (?, ?, ?, ?) 
+             ON DUPLICATE KEY UPDATE 
+             setting_value = VALUES(setting_value), 
+             updated_at = CURRENT_TIMESTAMP`,
+            [
+              key,
+              value,
+              settingData.type || 'string',
+              settingData.description || ''
+            ]
+          )
+        );
+      });
+    });
+
+    await Promise.all(updatePromises);
+
+    // Log the admin action
+    await connection.execute(
+      'INSERT INTO admin_action_logs (admin_user_id, action_type, target_type, action_details, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?)',
+      [
+        req.user?.user_id,
+        'settings_bulk_update',
+        'system_settings',
+        JSON.stringify({
+          updated_settings: Object.keys(settings).map(category => 
+            Object.keys((settings as any)[category])
+          ).flat(),
+          timestamp: new Date().toISOString()
+        }),
+        req.ip,
+        req.get('User-Agent')
+      ]
+    );
+
+    await connection.commit();
+
+    res.json({
+      success: true,
+      message: 'Settings updated successfully'
+    });
+
+  } catch (error) {
+    await connection.rollback();
+    console.error('Error updating settings:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update settings'
+    });
+  } finally {
+    connection.release();
+  }
+});
+
+// GET /api/admin/settings/export - Export current configuration
+router.get('/export', logAdminAction('settings_export'), async (req: AuthRequest, res) => {
+  const connection = await pool.getConnection();
+  
+  try {
+    const [settings]: any = await connection.execute('SELECT * FROM system_settings');
+    const [featureFlags]: any = await connection.execute('SELECT * FROM feature_flags');
+    const [ipWhitelist]: any = await connection.execute('SELECT * FROM admin_ip_whitelist WHERE is_active = true');
+
+    const exportData = {
+      exported_at: new Date().toISOString(),
+      exported_by: req.user?.user_id,
+      version: '1.0',
+      settings: settings.reduce((acc: any, setting: any) => {
+        acc[setting.setting_key] = {
+          value: setting.setting_value,
+          type: setting.setting_type,
+          description: setting.description
+        };
+        return acc;
+      }, {}),
+      feature_flags: featureFlags,
+      ip_whitelist: ipWhitelist.map((ip: any) => ({
+        ip_address: ip.ip_address,
+        ip_range: ip.ip_range,
+        description: ip.description
+      }))
+    };
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename=solo-leveling-config-${Date.now()}.json`);
+    res.json(exportData);
+
+  } catch (error) {
+    console.error('Error exporting settings:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to export configuration'
+    });
+  } finally {
+    connection.release();
+  }
+});
+
+// POST /api/admin/settings/reset - Reset to default values
+router.post('/reset', logAdminAction('settings_reset'), async (req: AuthRequest, res) => {
+  const connection = await pool.getConnection();
+  
+  try {
+    const defaultSettings = {
+      daily_quest_count: '8',
+      weekly_quest_count: '3',
+      level_multiplier: '1.5',
+      streak_bonus_xp: '50',
+      streak_bonus_enabled: 'true',
+      quest_refresh_hour: '0',
+      auto_generate_quests: 'true',
+      base_xp_per_level: '100',
+      max_level_cap: '100',
+      title_unlocks_enabled: 'true',
+      prestige_system_enabled: 'false',
+      max_login_attempts: '5',
+      session_lifetime_days: '7',
+      two_factor_enabled: 'false',
+      ip_whitelist_enabled: 'false',
+      password_min_length: '8',
+      password_require_special: 'true',
+      password_require_numbers: 'true',
+      password_require_uppercase: 'false',
+      default_theme: 'dark',
+      background_animation_enabled: 'true',
+      notification_sounds_enabled: 'true',
+      maintenance_mode_enabled: 'false',
+      performance_monitoring_enabled: 'true',
+      user_analytics_enabled: 'true',
+      error_reporting_enabled: 'true',
+      data_retention_days: '90',
+      ab_testing_enabled: 'false'
+    };
+
+    await connection.beginTransaction();
+
+    for (const [key, value] of Object.entries(defaultSettings)) {
+      await connection.execute(
+        `INSERT INTO system_settings (setting_key, setting_value, setting_type, description) 
+         VALUES (?, ?, 'string', 'Default setting') 
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+        [key, value]
+      );
+    }
+
+    await connection.commit();
+
+    res.json({
+      success: true,
+      message: 'Settings reset to defaults successfully'
+    });
+
+  } catch (error) {
+    await connection.rollback();
+    console.error('Error resetting settings:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to reset settings'
+    });
+  } finally {
+    connection.release();
+  }
+});
+
+// System Health and Monitoring
+router.get('/system-health', async (req: AuthRequest, res) => {
+  const connection = await pool.getConnection();
+  
+  try {
+    // Get recent performance metrics
+    const [performanceMetrics]: any = await connection.execute(
+      'SELECT * FROM performance_logs WHERE created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR) ORDER BY created_at DESC LIMIT 1000'
+    );
+
+    // Calculate average response time
+    const avgResponseTime = performanceMetrics.length > 0 
+      ? performanceMetrics.reduce((sum: number, log: any) => sum + log.response_time_ms, 0) / performanceMetrics.length 
+      : 0;
+
+    // Get error counts
+    const [errorCounts]: any = await connection.execute(
+      'SELECT error_level, COUNT(*) as count FROM system_error_logs WHERE created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR) GROUP BY error_level'
+    );
+
+    // Get active users count
+    const [activeUsers]: any = await connection.execute(
+      'SELECT COUNT(*) as count FROM user_sessions WHERE expires_at >= NOW()'
+    );
+
+    // Database connection test
+    const [dbHealth]: any = await connection.execute('SELECT 1 as health_check');
+
+    res.json({
+      success: true,
+      health: {
+        database: dbHealth.length > 0 ? 'healthy' : 'unhealthy',
+        average_response_time: Math.round(avgResponseTime),
+        active_users: activeUsers[0]?.count || 0,
+        error_counts: errorCounts.reduce((acc: any, error: any) => {
+          acc[error.error_level] = error.count;
+          return acc;
+        }, {}),
+        performance_metrics: performanceMetrics.slice(0, 100), // Last 100 requests
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching system health:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch system health',
+      health: {
+        database: 'unhealthy',
+        average_response_time: -1,
+        active_users: 0,
+        error_counts: {},
+        performance_metrics: [],
+        timestamp: new Date().toISOString()
+      }
+    });
+  } finally {
+    connection.release();
+  }
+});
 
 export default router;
 
@@ -4208,7 +5456,10 @@ import {
   completeQuest,
   generateDailyQuests,
   generateWeeklyQuests,
-  initializeQuestSystem
+  initializeQuestSystem,
+  processQuestExpiration,  
+  triggerQuestReset,      
+  checkQuestStatus 
 } from '../controllers/questController';
 import { authenticate, authorizeRole } from '../middleware/auth';
 
@@ -4225,8 +5476,11 @@ router.post('/generate-daily', generateDailyQuests);
 router.post('/generate-weekly', generateWeeklyQuests);
 router.post('/complete/:quest_id', completeQuest);
 
-export default router;
+router.post('/expire-and-renew', processQuestExpiration);  // Admin/system use
+router.post('/reset-quests', triggerQuestReset);           // Manual reset
+router.get('/status', checkQuestStatus);                   // Check if user needs new quests
 
+export default router;
 
 
 src/routes/userRoutes.ts
@@ -4271,6 +5525,597 @@ router.get('/streak-details', getUserStreakDetails);
 router.get('/coach/:coach_id/details', getCoachDetails);
 
 export default router;
+
+
+
+
+
+
+
+
+src/schedulers/questScheduler.ts
+// src/schedulers/questScheduler.ts
+import cron from 'node-cron';
+import  pool from '../config/database';
+import { shuffleArray, isQuestUnique } from '../controllers/questController';
+interface QuestTemplate {
+  quest_template_id: number;
+  quest_title: string;
+  quest_description: string;
+  base_xp: number;
+  difficulty: string;
+  related_stat: string;
+  field_name: string;
+}
+/**
+ * AUTOMATIC QUEST GENERATION SYSTEM
+ * This scheduler ensures every user gets fresh quests automatically
+ * without any manual intervention
+ */
+
+// Generate daily quests for all users at midnight
+export const scheduleDailyQuestGeneration = () => {
+  cron.schedule('0 0 * * *', async () => {
+    console.log('🔄 [CRON] Starting midnight daily quest reset...');
+    
+    try {
+      const connection = await pool.getConnection();
+      await connection.beginTransaction();
+      
+      // Get all active users
+      const [users]: any = await connection.execute(`
+        SELECT u.user_id, ap.field_of_interest, ap.full_name
+        FROM users u
+        JOIN adventurer_profiles ap ON u.user_id = ap.user_id
+        WHERE u.is_active = true AND u.user_type = 'adventurer'
+      `);
+      
+      let successCount = 0;
+      let errorCount = 0;
+      
+      for (const user of users) {
+        try {
+          // Clear all existing daily quests
+          await connection.execute(
+            'DELETE FROM user_active_quests WHERE user_id = ? AND quest_type = "daily"',
+            [user.user_id]
+          );
+          
+          // Get quest templates with proper typing
+          const [templates]: [QuestTemplate[], any] = await connection.execute(
+            `SELECT DISTINCT quest_template_id, quest_title, quest_description, base_xp, difficulty, related_stat, field_name
+             FROM quest_templates 
+             WHERE field_name = ? AND quest_type = 'daily' AND is_active = 1 
+             ORDER BY RAND()`,
+            [user.field_of_interest]
+          );
+          
+          // Apply uniqueness logic
+          const shuffledTemplates = shuffleArray(templates);
+          const selectedQuests: QuestTemplate[] = [];
+          const usedQuestIds = new Set<number>();
+          const usedQuestTitles = new Set<string>();
+          
+          for (const template of shuffledTemplates) {
+            if (selectedQuests.length >= 8) break;
+            
+            if (usedQuestIds.has(template.quest_template_id)) continue;
+            if (!isQuestUnique(template.quest_title, usedQuestTitles)) continue;
+            
+            selectedQuests.push(template);
+            usedQuestIds.add(template.quest_template_id);
+            usedQuestTitles.add(template.quest_title.toLowerCase().trim());
+          }
+          
+          // Get backup quests if needed
+          if (selectedQuests.length < 8) {
+            const [backupTemplates]: [QuestTemplate[], any] = await connection.execute(
+              `SELECT DISTINCT quest_template_id, quest_title, quest_description, base_xp, difficulty, related_stat, field_name
+               FROM quest_templates 
+               WHERE quest_type = 'daily' AND is_active = 1 AND field_name != ?
+               ORDER BY RAND() 
+               LIMIT ?`,
+              [user.field_of_interest, 20]
+            );
+            
+            const shuffledBackups = shuffleArray(backupTemplates);
+            
+            for (const template of shuffledBackups) {
+              if (selectedQuests.length >= 8) break;
+              
+              if (!usedQuestIds.has(template.quest_template_id) && 
+                  isQuestUnique(template.quest_title, usedQuestTitles)) {
+                
+                selectedQuests.push(template);
+                usedQuestIds.add(template.quest_template_id);
+                usedQuestTitles.add(template.quest_title.toLowerCase().trim());
+              }
+            }
+          }
+          
+          // Insert exactly 8 unique quests
+          const finalQuests = shuffleArray(selectedQuests).slice(0, 8);
+          
+          for (const template of finalQuests) {
+            await connection.execute(
+              `INSERT INTO user_active_quests 
+               (user_id, quest_template_id, quest_type, assigned_date, expires_at) 
+               VALUES (?, ?, 'daily', CURDATE(), DATE_ADD(NOW(), INTERVAL 1 DAY))`,
+              [user.user_id, template.quest_template_id]
+            );
+          }
+          
+          successCount++;
+          console.log(`✅ Generated ${finalQuests.length} unique quests for ${user.full_name}`);
+          
+        } catch (userError) {
+          errorCount++;
+          console.error(`❌ Failed for user ${user.user_id}:`, userError);
+        }
+      }
+      
+      await connection.commit();
+      connection.release();
+      
+      console.log(`✨ [MIDNIGHT RESET] Complete! Success: ${successCount}, Errors: ${errorCount}`);
+      
+    } catch (error) {
+      console.error('💥 [MIDNIGHT RESET] Failed:', error);
+    }
+  }, {
+    scheduled: true,
+    timezone: "America/New_York" // Change to your timezone
+  });
+  
+  console.log('✅ Midnight quest reset scheduler initialized');
+};
+
+// Generate weekly quests every Monday at 00:00
+export const scheduleWeeklyQuestGeneration = () => {
+  // Run every Monday at midnight
+  cron.schedule('0 0 * * 1', async () => {
+    console.log('🔄 [CRON] Starting automatic weekly quest generation...');
+    
+    try {
+      const connection = await pool.getConnection();
+      
+      const [users]: any = await connection.execute(`
+        SELECT u.user_id, ap.field_of_interest, ap.full_name
+        FROM users u
+        JOIN adventurer_profiles ap ON u.user_id = ap.user_id
+        WHERE u.is_active = true
+      `);
+      
+      let successCount = 0;
+      
+      for (const user of users) {
+        try {
+          // Clear expired weekly quests
+          await connection.execute(
+            'DELETE FROM user_active_quests WHERE user_id = ? AND quest_type = "weekly" AND expires_at < NOW()',
+            [user.user_id]
+          );
+          
+          // Check if user already has weekly quests for this week
+          const [existingQuests]: any = await connection.execute(
+            'SELECT COUNT(*) as count FROM user_active_quests WHERE user_id = ? AND quest_type = "weekly" AND WEEK(assigned_date) = WEEK(CURDATE())',
+            [user.user_id]
+          );
+          
+          if (existingQuests[0].count === 0) {
+            // Generate new weekly quests
+            const [templates]: any = await connection.execute(
+              `SELECT * FROM quest_templates 
+               WHERE field_name = ? AND quest_type = 'weekly' AND is_active = 1 
+               ORDER BY RAND() 
+               LIMIT 3`,
+              [user.field_of_interest]
+            );
+            
+            // Insert quest assignments
+            for (const template of templates) {
+              await connection.execute(
+                `INSERT INTO user_active_quests 
+                 (user_id, quest_template_id, quest_type, assigned_date, expires_at) 
+                 VALUES (?, ?, 'weekly', CURDATE(), DATE_ADD(NOW(), INTERVAL 7 DAY))`,
+                [user.user_id, template.quest_template_id]
+              );
+            }
+            
+            successCount++;
+            console.log(`✅ Generated weekly quests for ${user.full_name}`);
+          }
+        } catch (userError) {
+          console.error(`❌ Failed weekly quests for user ${user.user_id}:`, userError);
+        }
+      }
+      
+      connection.release();
+      console.log(`✨ [CRON] Weekly quest generation complete! Success: ${successCount}`);
+      
+    } catch (error) {
+      console.error('💥 [CRON] Weekly quest generation failed:', error);
+    }
+  });
+  
+  console.log('✅ Weekly quest scheduler initialized (runs every Monday at midnight)');
+};
+
+// Initialize quests for new users automatically
+export const initializeNewUserQuests = async (userId: number, fieldOfInterest: string) => {
+  console.log(`🎯 Initializing quests for new user ${userId} (${fieldOfInterest})...`);
+  
+  try {
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+    
+    // Generate initial daily quests
+    const [dailyTemplates]: any = await connection.execute(
+      `SELECT * FROM quest_templates 
+       WHERE field_name = ? AND quest_type = 'daily' AND is_active = 1 
+       ORDER BY RAND() 
+       LIMIT 8`,
+      [fieldOfInterest]
+    );
+    
+    // Generate initial weekly quests
+    const [weeklyTemplates]: any = await connection.execute(
+      `SELECT * FROM quest_templates 
+       WHERE field_name = ? AND quest_type = 'weekly' AND is_active = 1 
+       ORDER BY RAND() 
+       LIMIT 3`,
+      [fieldOfInterest]
+    );
+    
+    // Insert daily quests
+    for (const template of dailyTemplates) {
+      await connection.execute(
+        `INSERT INTO user_active_quests 
+         (user_id, quest_template_id, quest_type, assigned_date, expires_at) 
+         VALUES (?, ?, 'daily', CURDATE(), DATE_ADD(NOW(), INTERVAL 1 DAY))`,
+        [userId, template.quest_template_id]
+      );
+    }
+    
+    // Insert weekly quests
+    for (const template of weeklyTemplates) {
+      await connection.execute(
+        `INSERT INTO user_active_quests 
+         (user_id, quest_template_id, quest_type, assigned_date, expires_at) 
+         VALUES (?, ?, 'weekly', CURDATE(), DATE_ADD(NOW(), INTERVAL 7 DAY))`,
+        [userId, template.quest_template_id]
+      );
+    }
+    
+    // Initialize user stats based on field
+    const [statsTemplate]: any = await connection.execute(
+      'SELECT * FROM stats_template WHERE field_name = ?',
+      [fieldOfInterest]
+    );
+    
+    for (const stat of statsTemplate) {
+      await connection.execute(
+        `INSERT INTO user_stats (user_id, stat_name, stat_icon, current_value, max_value)
+         VALUES (?, ?, ?, ?, ?)`,
+        [userId, stat.stat_name, stat.stat_icon, stat.initial_value, stat.max_value]
+      );
+    }
+    
+    await connection.commit();
+    connection.release();
+    
+    console.log(`✅ Successfully initialized ${dailyTemplates.length} daily and ${weeklyTemplates.length} weekly quests for user ${userId}`);
+    
+    return {
+      dailyQuests: dailyTemplates.length,
+      weeklyQuests: weeklyTemplates.length,
+      stats: statsTemplate.length
+    };
+    
+  } catch (error) {
+    console.error('❌ Failed to initialize new user quests:', error);
+    throw error;
+  }
+};
+
+// Start all schedulers
+export const startAllSchedulers = () => {
+  console.log('🚀 Starting automatic quest generation system...');
+  scheduleDailyQuestGeneration();
+  scheduleWeeklyQuestGeneration();
+  console.log('✨ All quest schedulers are now active!');
+};
+export const generateDailyQuestsForUser = async (userId: number, fieldOfInterest: string) => {
+  const connection = await pool.getConnection();
+  
+  try {
+    await connection.beginTransaction();
+    
+    // Clear existing daily quests for today
+    await connection.execute(
+      'DELETE FROM user_active_quests WHERE user_id = ? AND quest_type = "daily" AND DATE(assigned_date) = CURDATE()',
+      [userId]
+    );
+    
+    // Get ALL available daily quest templates for this field (no duplicates)
+    const [templates]: any = await connection.execute(
+      `SELECT DISTINCT quest_template_id, field_name, quest_title, quest_description, base_xp, difficulty, related_stat
+       FROM quest_templates 
+       WHERE field_name = ? AND quest_type = 'daily' AND is_active = 1 
+       ORDER BY RAND()`,
+      [fieldOfInterest]
+    );
+    
+    console.log(`Found ${templates.length} unique daily quest templates for ${fieldOfInterest}`);
+    
+    // Determine how many quests to assign
+    let questsToAssign;
+    if (templates.length >= 8) {
+      // If we have 8+ templates, assign 8 random ones
+      questsToAssign = templates.slice(0, 8);
+    } else if (templates.length >= 4) {
+      // If we have 4-7 templates, assign all of them
+      questsToAssign = templates;
+    } else if (templates.length > 0) {
+      // If we have 1-3 templates, assign them + fill with generic ones
+      questsToAssign = [...templates];
+      
+      // Add generic quests to reach 6 total
+      const genericQuests = [
+        { quest_title: 'Morning Routine', base_xp: 25, difficulty: 'easy', related_stat: 'Stamina' },
+        { quest_title: 'Study/Practice Session', base_xp: 35, difficulty: 'medium', related_stat: 'Intelligence' },
+        { quest_title: 'Physical Exercise', base_xp: 30, difficulty: 'medium', related_stat: 'Strength' },
+        { quest_title: 'Skill Development', base_xp: 40, difficulty: 'medium', related_stat: 'Intelligence' },
+        { quest_title: 'Healthy Meal Planning', base_xp: 20, difficulty: 'easy', related_stat: 'Wisdom' },
+      ];
+      
+      const needed = Math.min(6 - templates.length, genericQuests.length);
+      for (let i = 0; i < needed; i++) {
+        questsToAssign.push({
+          quest_template_id: null,
+          ...genericQuests[i]
+        });
+      }
+    } else {
+      // No templates found - use all generic quests
+      questsToAssign = [
+        { quest_template_id: null, quest_title: 'Morning Routine', base_xp: 25, difficulty: 'easy', related_stat: 'Stamina' },
+        { quest_template_id: null, quest_title: 'Study/Practice Session', base_xp: 35, difficulty: 'medium', related_stat: 'Intelligence' },
+        { quest_template_id: null, quest_title: 'Physical Exercise', base_xp: 30, difficulty: 'medium', related_stat: 'Strength' },
+        { quest_template_id: null, quest_title: 'Skill Development', base_xp: 40, difficulty: 'medium', related_stat: 'Intelligence' },
+        { quest_template_id: null, quest_title: 'Healthy Meal Planning', base_xp: 20, difficulty: 'easy', related_stat: 'Wisdom' },
+        { quest_template_id: null, quest_title: 'Evening Reflection', base_xp: 20, difficulty: 'easy', related_stat: 'Wisdom' }
+      ];
+    }
+    
+    // Insert the assigned quests (NO DUPLICATES)
+    for (const quest of questsToAssign) {
+      await connection.execute(
+        `INSERT INTO user_active_quests 
+         (user_id, quest_template_id, quest_type, assigned_date, expires_at) 
+         VALUES (?, ?, 'daily', CURDATE(), DATE_ADD(NOW(), INTERVAL 1 DAY))`,
+        [userId, quest.quest_template_id]
+      );
+    }
+    
+    await connection.commit();
+    console.log(`✅ Assigned ${questsToAssign.length} unique daily quests to user ${userId}`);
+    
+    return questsToAssign;
+    
+  } catch (error) {
+    await connection.rollback();
+    console.error(`❌ Failed to generate daily quests for user ${userId}:`, error);
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+/**
+ * Automated Quest Expiration Scheduler
+ * Runs every day at midnight to expire old quests and generate new ones
+ */
+
+const generateUniqueQuestsForUser = async (connection: any, userId: number, fieldOfInterest: string) => {
+  // Same logic as in questController - you might want to extract this to a shared utility
+  try {
+    const [templates]: any = await connection.execute(
+      `SELECT * FROM quest_templates 
+       WHERE field_name = ? AND quest_type = 'daily' AND is_active = 1 
+       ORDER BY RAND()`,
+      [fieldOfInterest]
+    );
+    
+    // Apply uniqueness logic (shortened for brevity)
+    const selectedQuests: any[] = [];
+    const usedQuestIds = new Set<number>();
+    const usedQuestTitles = new Set<string>();
+    
+    // Selection logic here...
+    for (const template of templates) {
+      if (selectedQuests.length >= 8) break;
+      if (usedQuestIds.has(template.quest_template_id)) continue;
+      
+      selectedQuests.push(template);
+      usedQuestIds.add(template.quest_template_id);
+      usedQuestTitles.add(template.quest_title.toLowerCase().trim());
+    }
+    
+    // Insert new quests
+    for (const template of selectedQuests.slice(0, 8)) {
+      await connection.execute(
+        `INSERT INTO user_active_quests 
+         (user_id, quest_template_id, quest_type, assigned_date, expires_at) 
+         VALUES (?, ?, 'daily', CURDATE(), DATE_ADD(NOW(), INTERVAL 1 DAY))`,
+        [userId, template.quest_template_id]
+      );
+    }
+    
+    return selectedQuests;
+  } catch (error) {
+    console.error('Generate quests error:', error);
+    return [];
+  }
+};
+
+const automatedQuestReset = async () => {
+  const connection = await pool.getConnection();
+  
+  try {
+    await connection.beginTransaction();
+    
+    console.log(`[${new Date().toISOString()}] 🕒 Starting automated daily quest reset...`);
+    
+    // Step 1: Expire uncompleted daily quests
+    const [expired]: any = await connection.execute(
+      `UPDATE user_active_quests 
+       SET expires_at = NOW() - INTERVAL 1 SECOND
+       WHERE quest_type = 'daily' 
+       AND expires_at < NOW() 
+       AND is_completed = FALSE`
+    );
+    
+    console.log(`⏰ Expired ${expired.affectedRows} uncompleted daily quests`);
+    
+    // Step 2: Get users needing new quests
+    const [users]: any = await connection.execute(
+      `SELECT DISTINCT u.user_id, ap.field_of_interest, u.email
+       FROM users u
+       JOIN adventurer_profiles ap ON u.user_id = ap.user_id
+       LEFT JOIN user_active_quests uaq ON u.user_id = uaq.user_id 
+         AND uaq.quest_type = 'daily' 
+         AND uaq.expires_at > NOW()
+       WHERE u.user_type = 'adventurer' 
+       AND uaq.user_id IS NULL`
+    );
+    
+    console.log(`👥 Generating fresh quests for ${users.length} users`);
+    
+    // Step 3: Generate new quests for each user
+    let successCount = 0;
+    for (const user of users) {
+      try {
+        const newQuests = await generateUniqueQuestsForUser(
+          connection, 
+          user.user_id, 
+          user.field_of_interest
+        );
+        
+        if (newQuests.length > 0) {
+          successCount++;
+        }
+      } catch (userError) {
+        console.error(`Error for user ${user.email}:`, userError);
+      }
+    }
+    
+    // Step 4: Clean up old expired quests
+    const [cleanup]: any = await connection.execute(
+      `DELETE FROM user_active_quests 
+       WHERE expires_at < NOW() - INTERVAL 7 DAY 
+       AND is_completed = FALSE`
+    );
+    
+    await connection.commit();
+    
+    console.log(`✅ Quest reset complete: ${successCount}/${users.length} users renewed, ${cleanup.affectedRows} old quests cleaned`);
+    
+  } catch (error) {
+    await connection.rollback();
+    console.error('Automated quest reset error:', error);
+  } finally {
+    connection.release();
+  }
+};
+
+// Schedule the automated quest reset
+export const startQuestScheduler = () => {
+  // Run every day at midnight (00:00)
+  cron.schedule('0 0 * * *', automatedQuestReset, {
+    scheduled: true,
+    timezone: "America/New_York" // Change to your timezone
+  });
+  
+  // Optional: Run every hour for testing (comment out in production)
+  // cron.schedule('0 * * * *', automatedQuestReset);
+  
+  console.log('🚀 Quest scheduler started - will reset daily quests at midnight');
+};
+
+export default { startQuestScheduler };
+
+
+
+
+
+
+src/scripts/dataCleanup.ts
+const { PrismaClient } = require('@prisma/client');
+const SystemSettingsUtil = require('../utils/systemSettings');
+
+const prisma = new PrismaClient();
+
+async function performDataCleanup() {
+  console.log('Starting automated data cleanup...');
+  
+  try {
+    const retentionDays = await SystemSettingsUtil.getSetting('data_retention_days', 90);
+    const cutoffDate = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+
+    // Clean up old performance logs
+    const deletedPerformance = await prisma.performance_logs.deleteMany({
+      where: {
+        created_at: { lt: cutoffDate }
+      }
+    });
+
+    // Clean up old analytics data
+    const deletedAnalytics = await prisma.user_analytics.deleteMany({
+      where: {
+        created_at: { lt: cutoffDate }
+      }
+    });
+
+    // Clean up resolved error logs
+    const deletedErrors = await prisma.system_error_logs.deleteMany({
+      where: {
+        created_at: { lt: cutoffDate },
+        resolved: true
+      }
+    });
+
+    // Clean up expired sessions
+    const deletedSessions = await prisma.user_sessions.deleteMany({
+      where: {
+        expires_at: { lt: new Date() }
+      }
+    });
+
+    console.log('Data cleanup completed:', {
+      performance_logs_deleted: deletedPerformance.count,
+      analytics_deleted: deletedAnalytics.count,
+      error_logs_deleted: deletedErrors.count,
+      sessions_deleted: deletedSessions.count,
+      retention_days: retentionDays
+    });
+
+  } catch (error) {
+    console.error('Data cleanup failed:', error);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+// Run cleanup if called directly
+if (require.main === module) {
+  performDataCleanup();
+}
+
+module.exports = performDataCleanup;
+
+
+
 
 
 
@@ -4329,21 +6174,235 @@ src/utils/jwt.ts
 (empty)
 
 
+
+src/utils/systemSettings.ts
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+
+export class SystemSettingsUtil {
+  static async getSetting(key, defaultValue = null) {
+    try {
+      const setting = await prisma.system_settings.findUnique({
+        where: { setting_key: key }
+      });
+
+      if (!setting) return defaultValue;
+
+      // Parse value based on type
+      switch (setting.setting_type) {
+        case 'number':
+          return parseFloat(setting.setting_value);
+        case 'boolean':
+          return setting.setting_value === 'true';
+        case 'json':
+          try {
+            return JSON.parse(setting.setting_value);
+          } catch {
+            return defaultValue;
+          }
+        default:
+          return setting.setting_value;
+      }
+    } catch (error) {
+      console.error(`Error getting setting ${key}:`, error);
+      return defaultValue;
+    }
+  }
+
+  static async setSetting(key, value, type = 'string', description = '') {
+    try {
+      let stringValue;
+      switch (type) {
+        case 'boolean':
+          stringValue = value.toString();
+          break;
+        case 'number':
+          stringValue = value.toString();
+          break;
+        case 'json':
+          stringValue = JSON.stringify(value);
+          break;
+        default:
+          stringValue = value;
+      }
+
+      await prisma.system_settings.upsert({
+        where: { setting_key: key },
+        update: { 
+          setting_value: stringValue,
+          updated_at: new Date()
+        },
+        create: {
+          setting_key: key,
+          setting_value: stringValue,
+          setting_type: type,
+          description
+        }
+      });
+
+      return true;
+    } catch (error) {
+      console.error(`Error setting ${key}:`, error);
+      return false;
+    }
+  }
+
+  static async getMultipleSettings(keys) {
+    try {
+      const settings = await prisma.system_settings.findMany({
+        where: {
+          setting_key: { in: keys }
+        }
+      });
+
+      const result = {};
+      settings.forEach(setting => {
+        let value = setting.setting_value;
+        
+        switch (setting.setting_type) {
+          case 'number':
+            value = parseFloat(value);
+            break;
+          case 'boolean':
+            value = value === 'true';
+            break;
+          case 'json':
+            try {
+              value = JSON.parse(value);
+            } catch {
+              // Keep as string if JSON parse fails
+            }
+            break;
+        }
+
+        result[setting.setting_key] = value;
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Error getting multiple settings:', error);
+      return {};
+    }
+  }
+
+  static async isFeatureEnabled(flagKey, userId = null, userType = null) {
+    try {
+      const flag = await prisma.feature_flags.findUnique({
+        where: { flag_key: flagKey }
+      });
+
+      if (!flag || !flag.is_enabled) {
+        return false;
+      }
+
+      // Check rollout percentage
+      if (flag.rollout_percentage < 100) {
+        const userHash = userId ? 
+          userId.toString().split('').reduce((a, b) => {
+            a = ((a << 5) - a) + b.charCodeAt(0);
+            return a & a;
+          }, 0) : Math.random() * 100;
+        
+        if (Math.abs(userHash) % 100 >= flag.rollout_percentage) {
+          return false;
+        }
+      }
+
+      // Check user type targeting
+      if (flag.target_user_types && userType) {
+        const targetTypes = Array.isArray(flag.target_user_types) 
+          ? flag.target_user_types 
+          : JSON.parse(flag.target_user_types);
+        
+        if (!targetTypes.includes(userType)) {
+          return false;
+        }
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Feature flag check error:', error);
+      return false;
+    }
+  }
+
+  static async validateSystemHealth() {
+    try {
+      // Test database connection
+      await prisma.$queryRaw`SELECT 1`;
+      
+      // Check recent error rates
+      const recentErrors = await prisma.system_error_logs.count({
+        where: {
+          created_at: {
+            gte: new Date(Date.now() - 60 * 60 * 1000) // Last hour
+          },
+          error_level: {
+            in: ['error', 'critical']
+          }
+        }
+      });
+
+      // Check performance metrics
+      const recentPerformance = await prisma.performance_logs.findMany({
+        where: {
+          created_at: {
+            gte: new Date(Date.now() - 60 * 60 * 1000)
+          }
+        },
+        select: {
+          response_time_ms: true
+        }
+      });
+
+      const avgResponseTime = recentPerformance.length > 0 
+        ? recentPerformance.reduce((sum, p) => sum + p.response_time_ms, 0) / recentPerformance.length
+        : 0;
+
+      return {
+        database: 'healthy',
+        error_count: recentErrors,
+        avg_response_time: Math.round(avgResponseTime),
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('Health check failed:', error);
+      return {
+        database: 'unhealthy',
+        error_count: -1,
+        avg_response_time: -1,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+}
+
+module.exports = SystemSettingsUtil;
+
+
+
+
 src/app.ts
 import express, { Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
 import dotenv from 'dotenv'; // Change this line
+import { startQuestScheduler } from './schedulers/questScheduler';
 dotenv.config(); // Change this line
 
+const { PrismaClient } = require('@prisma/client');
+const { performanceMonitor, logSystemError } = require('./middleware/adminLogger');
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
+const adminSettingsRoutes = require('./routes/admin/settings');
+const prisma = new PrismaClient();
 
 // Import after app is created
 import { testConnection } from './config/database';
 import routes from './routes';
 import { errorHandler } from './middleware/errorHandler';
+import { startAllSchedulers } from './schedulers/questScheduler';
 
 // Middleware
 app.use(helmet({
@@ -4387,8 +6446,63 @@ app.use(
 
 console.log("Serving uploads from:", path.join(__dirname, "../uploads"));
 
+app.use(async (req, res, next) => {
+  try {
+    const performanceEnabled = await prisma.system_settings.findUnique({
+      where: { setting_key: 'performance_monitoring_enabled' }
+    });
+    
+    if (performanceEnabled && performanceEnabled.setting_value === 'true') {
+      return performanceMonitor(req, res, next);
+    }
+    
+    next();
+  } catch (error) {
+    // If we can't check the setting, just continue without monitoring
+    next();
+  }
+});
+
+// Global error handler with system error logging
+app.use(async (err, req, res, next) => {
+  console.error('Global error handler:', err);
+
+  // Log system error
+  try {
+    await logSystemError(err, req, req.user?.user_id);
+  } catch (logError) {
+    console.error('Failed to log system error:', logError);
+  }
+
+  // Determine error response based on environment
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  
+  res.status(err.status || 500).json({
+    success: false,
+    error: isDevelopment ? err.message : 'Internal server error',
+    ...(isDevelopment && { stack: err.stack })
+  });
+});
+
+// Add the admin settings routes
+app.use('/api/admin/settings', adminSettingsRoutes);
+
+// Your existing routes...
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('Shutting down gracefully...');
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
+module.exports = app;
+
 // Routes
 app.use('/api', routes);
+
+
+startQuestScheduler(); 
 
 // Error handler
 app.use(errorHandler);
@@ -4400,12 +6514,18 @@ const startServer = async () => {
     
     if (!dbConnected) {
       console.log('⚠️ Starting server without database connection');
-      console.log('📝 Check your .env file and MySQL server');
+      console.log('🔧 Check your .env file and MySQL server');
+    } else {
+      console.log('✅ Database connected successfully');
+      
+      // 🎯 START AUTOMATIC QUEST GENERATION SYSTEM
+      startAllSchedulers();
     }
     
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📡 Health check: http://localhost:${PORT}/api/health`);
+      console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
+      console.log('🎮 Solo Leveling Life System - Quest Generation Active!');
     });
   } catch (error: any) {
     console.error('Failed to start server:', error.message);
@@ -4413,6 +6533,7 @@ const startServer = async () => {
 };
 
 startServer();
+
 
 
 

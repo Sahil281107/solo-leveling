@@ -274,3 +274,122 @@ LEFT JOIN quest_templates qt ON uaq.quest_template_id = qt.quest_template_id
 WHERE uaq.user_id = 39 AND uaq.quest_type = 'daily'
 ORDER BY uaq.assigned_date DESC;
 
+-- Quick verification script to check your current quest templates
+-- Run this to see the current state before implementing the random+unique solution
+
+-- =======================================================================
+-- VERIFICATION QUERIES - Check current quest template status
+-- =======================================================================
+
+-- 1. Count daily quests per field
+SELECT 
+    field_name, 
+    COUNT(*) as total_daily_quests,
+    COUNT(CASE WHEN is_active = 1 THEN 1 END) as active_daily_quests,
+    COUNT(CASE WHEN is_active = 0 THEN 1 END) as inactive_daily_quests
+FROM quest_templates 
+WHERE quest_type = 'daily'
+GROUP BY field_name
+ORDER BY active_daily_quests DESC;
+
+-- 2. Check for potential duplicates within each field
+SELECT 
+    field_name,
+    quest_title,
+    COUNT(*) as duplicate_count,
+    GROUP_CONCAT(quest_template_id) as template_ids
+FROM quest_templates 
+WHERE quest_type = 'daily' AND is_active = 1
+GROUP BY field_name, quest_title
+HAVING COUNT(*) > 1
+ORDER BY duplicate_count DESC, field_name;
+
+-- 3. Show sample quests for each field (to verify variety)
+SELECT 
+    field_name,
+    GROUP_CONCAT(DISTINCT quest_title ORDER BY quest_title SEPARATOR ' | ') as sample_quests
+FROM quest_templates 
+WHERE quest_type = 'daily' AND is_active = 1
+GROUP BY field_name
+ORDER BY field_name;
+
+-- 4. Test the random selection query for a specific field
+-- Replace 'Programming Skills' with your field of interest
+SELECT 
+    quest_template_id,
+    quest_title,
+    base_xp,
+    difficulty,
+    related_stat
+FROM quest_templates 
+WHERE field_name = 'Programming Skills' AND quest_type = 'daily' AND is_active = 1 
+ORDER BY RAND() 
+LIMIT 8;
+
+-- 5. Check total available quest templates across all fields
+SELECT 
+    COUNT(*) as total_active_daily_quests,
+    COUNT(DISTINCT field_name) as total_fields,
+    AVG(subquery.field_count) as avg_quests_per_field
+FROM (
+    SELECT field_name, COUNT(*) as field_count
+    FROM quest_templates 
+    WHERE quest_type = 'daily' AND is_active = 1
+    GROUP BY field_name
+) subquery;
+
+-- =======================================================================
+-- OPTIONAL: Quick fix for obvious duplicates (if found)
+-- =======================================================================
+
+-- Only run this if the above queries show exact duplicate quest titles
+-- This keeps the first occurrence of each duplicate and deactivates the rest
+
+/*
+UPDATE quest_templates qt1
+SET is_active = 0
+WHERE qt1.quest_type = 'daily' 
+AND qt1.is_active = 1
+AND EXISTS (
+    SELECT 1 FROM quest_templates qt2 
+    WHERE qt2.field_name = qt1.field_name 
+    AND qt2.quest_title = qt1.quest_title 
+    AND qt2.quest_type = 'daily'
+    AND qt2.is_active = 1
+    AND qt2.quest_template_id < qt1.quest_template_id
+);
+*/
+
+-- =======================================================================
+-- TEST THE RANDOM + UNIQUE SOLUTION
+-- =======================================================================
+
+-- Simulate the random + unique selection process for any field
+-- This shows what the new system would select
+WITH RandomizedQuests AS (
+    SELECT 
+        quest_template_id,
+        quest_title,
+        base_xp,
+        difficulty,
+        related_stat,
+        field_name,
+        RAND() as random_order,
+        ROW_NUMBER() OVER (
+            PARTITION BY field_name, LOWER(TRIM(quest_title))
+            ORDER BY RAND()
+        ) as uniqueness_rank
+    FROM quest_templates 
+    WHERE quest_type = 'daily' AND is_active = 1
+)
+SELECT 
+    field_name,
+    quest_template_id,
+    quest_title,
+    base_xp,
+    difficulty,
+    related_stat
+FROM RandomizedQuests
+WHERE uniqueness_rank = 1  -- Only get first occurrence of each unique title
+ORDER BY field_name, random_order
+LIMIT 8;

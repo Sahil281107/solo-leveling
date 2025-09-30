@@ -2,12 +2,8 @@ import express, { Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
-import dotenv from 'dotenv'; // Change this line
-import { startQuestScheduler } from './schedulers/questScheduler';
-dotenv.config(); // Change this line
-
-const app: Application = express();
-const PORT = process.env.PORT || 5000;
+import dotenv from 'dotenv';
+dotenv.config();
 
 // Import after app is created
 import { testConnection } from './config/database';
@@ -15,9 +11,19 @@ import routes from './routes';
 import { errorHandler } from './middleware/errorHandler';
 import { startAllSchedulers } from './schedulers/questScheduler';
 
+// CORRECT: Import admin settings with ES6 import (not require)
+import adminSettingsRoutes from './routes/admin/settings';
+
+const { PrismaClient } = require('@prisma/client');
+const { performanceMonitor, logSystemError } = require('./middleware/adminLogger');
+
+const app: Application = express();
+const PORT = process.env.PORT || 5000;
+const prisma = new PrismaClient();
+
 // Middleware
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" } // Add this
+  crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
 // Enhanced CORS configuration
@@ -49,45 +55,93 @@ app.use('/uploads', (req, res, next) => {
 app.use(
   "/uploads",
   express.static(path.join(__dirname, "../uploads"), {
-    setHeaders: (res, filePath) => {
-      res.setHeader('Cache-Control', 'public, max-age=31536000');
+    setHeaders: (res) => {
+      res.header('Cross-Origin-Resource-Policy', 'cross-origin');
     }
   })
 );
 
-console.log("Serving uploads from:", path.join(__dirname, "../uploads"));
+// Performance monitoring middleware
+if (performanceMonitor) {
+  app.use(performanceMonitor);
+}
 
-// Routes
+// Mount main API routes
 app.use('/api', routes);
 
-startQuestScheduler(); 
+// Mount admin settings routes separately (if needed for specific admin settings)
+// This line might be redundant if settings are already handled in adminRoutes
+// app.use('/api/admin/settings', adminSettingsRoutes);
 
-// Error handler
+// Global error handler
 app.use(errorHandler);
 
-// Start server
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Solo Leveling System API',
+    version: '1.0.0',
+    status: 'Running',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// 404 handler
+app.use('*', (req, res) => {
+  res.status(404).json({
+    error: 'Route not found',
+    path: req.originalUrl,
+    method: req.method
+  });
+});
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received. Shutting down gracefully...');
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received. Shutting down gracefully...');
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
 const startServer = async () => {
   try {
-    const dbConnected = await testConnection();
+    // Test database connection
+    console.log('🔍 Testing database connection...');
+    await testConnection();
+    console.log('✅ Database connected successfully');
+
+    // Start schedulers
+    console.log('⚡ Starting quest schedulers...');
+    await startAllSchedulers();
+    console.log('✅ Quest schedulers started');
+
+    // Start server
+    app.listen(PORT, () => {
+      console.log(`
+🚀 Solo Leveling System API Server Started!
+📡 Port: ${PORT}
+🌍 Environment: ${process.env.NODE_ENV || 'development'}
+🔗 Health Check: http://localhost:${PORT}/api/health
+📚 API Docs: http://localhost:${PORT}/api
+⏰ Server Time: ${new Date().toISOString()}
+      `);
+    });
+
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
     
-    if (!dbConnected) {
-      console.log('⚠️ Starting server without database connection');
-      console.log('🔧 Check your .env file and MySQL server');
-    } else {
-      console.log('✅ Database connected successfully');
-      
-      // 🎯 START AUTOMATIC QUEST GENERATION SYSTEM
-      startAllSchedulers();
+    if (logSystemError) {
+      await logSystemError(error, null, null, 'server_startup');
     }
     
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
-      console.log('🎮 Solo Leveling Life System - Quest Generation Active!');
-    });
-  } catch (error: any) {
-    console.error('Failed to start server:', error.message);
+    process.exit(1);
   }
 };
 
+// Start the server
 startServer();

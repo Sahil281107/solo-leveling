@@ -14,6 +14,9 @@ import {
 } from '../controllers/adminController';
 import { authenticate, authorizeRole } from '../middleware/auth';
 
+// Import the admin settings routes
+import adminSettingsRoutes from './admin/settings';
+
 const router = Router();
 
 // All routes require authentication and admin role
@@ -37,5 +40,9 @@ router.get('/quests', getAllQuestsDetailed);
 
 // ==================== ADMIN LOGS ====================
 router.get('/logs', getAdminLogs);
+
+// ==================== SETTINGS ====================
+// Mount the admin settings sub-routes
+router.use('/settings', adminSettingsRoutes);
 
 export default router;

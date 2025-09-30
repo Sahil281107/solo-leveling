@@ -39,7 +39,13 @@ model User {
   user_active_quests                                                             user_active_quests[]
   user_custom_quests                                                             user_custom_quests[]
   user_sessions                                                                  user_sessions[]
-  user_stats                                                                     user_stats[]
+  user_stats                                 
+  admin_ip_whitelist_created    AdminIpWhitelist[]
+  feature_flags_created         FeatureFlag[]
+  performance_logs              PerformanceLog[]
+  user_analytics                UserAnalytics[]
+  system_error_logs_user        SystemErrorLog[] @relation("SystemErrorLogUser")
+  system_error_logs_resolver    SystemErrorLog[] @relation("SystemErrorLogResolver")                                    user_stats[]
 
   @@index([email], map: "idx_email")
   @@index([user_type], map: "idx_user_type")
@@ -564,4 +570,99 @@ enum quest_completion_history_verification_method {
   video
   gps
   app_integration
+}
+model AdminIpWhitelist {
+  whitelist_id Int       @id @default(autoincrement())
+  ip_address   String    @db.VarChar(45)
+  ip_range     String?   @db.VarChar(18)
+  description  String?   @db.VarChar(255)
+  created_by   Int?
+  created_at   DateTime? @default(now()) @db.Timestamp(0)
+  is_active    Boolean?  @default(true)
+  creator      User?     @relation(fields: [created_by], references: [user_id], onDelete: SetNull)
+
+  @@index([ip_address], map: "idx_ip")
+  @@index([is_active], map: "idx_active")
+  @@map("admin_ip_whitelist")
+}
+
+model FeatureFlag {
+  flag_id             Int       @id @default(autoincrement())
+  flag_key            String    @unique @db.VarChar(100)
+  flag_name           String    @db.VarChar(255)
+  description         String?   @db.Text
+  is_enabled          Boolean?  @default(false)
+  rollout_percentage  Int?      @default(0)
+  target_user_types   Json?
+  conditions          Json?
+  created_by          Int?
+  created_at          DateTime? @default(now()) @db.Timestamp(0)
+  updated_at          DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  creator             User?     @relation(fields: [created_by], references: [user_id], onDelete: SetNull)
+
+  @@index([flag_key], map: "idx_key")
+  @@index([is_enabled], map: "idx_enabled")
+  @@map("feature_flags")
+}
+
+model PerformanceLog {
+  log_id           Int       @id @default(autoincrement())
+  endpoint         String    @db.VarChar(255)
+  method           String    @db.VarChar(10)
+  response_time_ms Int
+  status_code      Int
+  user_id          Int?
+  ip_address       String?   @db.VarChar(45)
+  user_agent       String?   @db.Text
+  created_at       DateTime? @default(now()) @db.Timestamp(0)
+  user             User?     @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
+
+  @@index([endpoint], map: "idx_endpoint")
+  @@index([response_time_ms], map: "idx_response_time")
+  @@index([created_at], map: "idx_created")
+  @@map("performance_logs")
+}
+
+model UserAnalytics {
+  analytics_id Int       @id @default(autoincrement())
+  user_id      Int?
+  session_id   String?   @db.VarChar(255)
+  event_type   String    @db.VarChar(50)
+  event_data   Json?
+  page_url     String?   @db.VarChar(500)
+  referrer     String?   @db.VarChar(500)
+  device_info  Json?
+  ip_address   String?   @db.VarChar(45)
+  created_at   DateTime? @default(now()) @db.Timestamp(0)
+  user         User?     @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
+
+  @@index([user_id], map: "idx_user")
+  @@index([event_type], map: "idx_event_type")
+  @@index([session_id], map: "idx_session")
+  @@index([created_at], map: "idx_created")
+  @@map("user_analytics")
+}
+
+model SystemErrorLog {
+  error_id      Int       @id @default(autoincrement())
+  error_level   String    @db.VarChar(20)
+  error_message String    @db.Text
+  error_stack   String?   @db.Text
+  endpoint      String?   @db.VarChar(255)
+  method        String?   @db.VarChar(10)
+  user_id       Int?
+  request_data  Json?
+  ip_address    String?   @db.VarChar(45)
+  user_agent    String?   @db.Text
+  resolved      Boolean?  @default(false)
+  resolved_by   Int?
+  resolved_at   DateTime? @db.Timestamp(0)
+  created_at    DateTime? @default(now()) @db.Timestamp(0)
+  user          User?     @relation("SystemErrorLogUser", fields: [user_id], references: [user_id], onDelete: SetNull)
+  resolver      User?     @relation("SystemErrorLogResolver", fields: [resolved_by], references: [user_id], onDelete: SetNull)
+
+  @@index([error_level], map: "idx_level")
+  @@index([resolved], map: "idx_resolved")
+  @@index([created_at], map: "idx_created")
+  @@map("system_error_logs")
 }

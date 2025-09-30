@@ -22,6 +22,722 @@ export async function POST(request: Request) {
 
 
 
+app/admin/settings/page.tsx
+// File: frontend/app/admin/settings/page.tsx
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
+import api from '@/lib/api';
+import { getUser, logout } from '@/lib/auth';
+import Navbar from '@/components/layout/Navbar';
+import FeatureFlags from '@/components/admin/FeatureFlags';
+import SystemMonitoring from '@/components/admin/SystemMonitoring';
+import { 
+  Settings, Crown, Save, RotateCcw, Download, Upload, 
+  Gamepad2, Trophy, Shield, Palette, BarChart3, Database,
+  Sliders, AlertCircle, CheckCircle, Clock, Activity, Flag
+} from 'lucide-react';
+
+interface SettingValue {
+  value: any;
+  type: string;
+  description: string;
+}
+
+interface Settings {
+  quest_system: Record<string, SettingValue>;
+  level_progression: Record<string, SettingValue>;
+  security: Record<string, SettingValue>;
+  platform: Record<string, SettingValue>;
+  monitoring: Record<string, SettingValue>;
+  coach_system: Record<string, SettingValue>;
+}
+
+export default function AdminSettingsPage() {
+  const router = useRouter();
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState('quest_system');
+  const [settings, setSettings] = useState<Settings>({
+    quest_system: {},
+    level_progression: {},
+    security: {},
+    platform: {},
+    monitoring: {},
+    coach_system: {}
+  });
+  const [originalSettings, setOriginalSettings] = useState<Settings>({
+    quest_system: {},
+    level_progression: {},
+    security: {},
+    platform: {},
+    monitoring: {},
+    coach_system: {}
+  });
+  const [hasChanges, setHasChanges] = useState(false);
+
+  // Background animation
+  const [currentBg, setCurrentBg] = useState(0);
+  const backgrounds = [
+    '/images/backgrounds/solo-leveling-1.jpg',
+    '/images/backgrounds/solo-leveling-2.jpg',
+    '/images/backgrounds/solo-leveling-3.jpg',
+    '/images/backgrounds/solo-leveling-4.jpg',
+  ];
+
+  useEffect(() => {
+    const initAdmin = async () => {
+      const userData = await getUser();
+      
+      if (!userData || userData.user_type !== 'admin') {
+        router.push('/login');
+        return;
+      }
+      
+      setUser(userData);
+      await fetchSettings();
+      setLoading(false);
+    };
+
+    initAdmin();
+  }, [router]);
+
+  useEffect(() => {
+    const bgTimer = setInterval(() => {
+      setCurrentBg((prev) => (prev + 1) % backgrounds.length);
+    }, 5000);
+    
+    return () => clearInterval(bgTimer);
+  }, []);
+
+  useEffect(() => {
+    // Check for changes
+    const hasChanged = JSON.stringify(settings) !== JSON.stringify(originalSettings);
+    setHasChanges(hasChanged);
+  }, [settings, originalSettings]);
+
+  const fetchSettings = async () => {
+    try {
+      const response = await api.get('/admin/settings');
+      if (response.data.success) {
+        setSettings(response.data.settings);
+        setOriginalSettings(response.data.settings);
+      }
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+      toast.error('Failed to load settings');
+    }
+  };
+
+  const saveSettings = async () => {
+    setSaving(true);
+    try {
+      const response = await api.put('/admin/settings', { settings });
+      if (response.data.success) {
+        setOriginalSettings({ ...settings });
+        toast.success('Settings saved successfully!');
+      }
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      toast.error('Failed to save settings');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resetToDefaults = async () => {
+    if (!confirm('Are you sure you want to reset all settings to default values? This action cannot be undone.')) {
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const response = await api.post('/admin/settings/reset');
+      if (response.data.success) {
+        await fetchSettings();
+        toast.success('Settings reset to defaults successfully!');
+      }
+    } catch (error) {
+      console.error('Error resetting settings:', error);
+      toast.error('Failed to reset settings');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const exportConfig = async () => {
+    try {
+      const response = await api.get('/admin/settings/export', {
+        responseType: 'blob'
+      });
+      
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `solo-leveling-config-${Date.now()}.json`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      
+      toast.success('Configuration exported successfully!');
+    } catch (error) {
+      console.error('Error exporting config:', error);
+      toast.error('Failed to export configuration');
+    }
+  };
+
+  const importConfig = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const config = JSON.parse(e.target?.result as string);
+        
+        const response = await api.post('/admin/settings/import', { config });
+        if (response.data.success) {
+          await fetchSettings();
+          toast.success('Configuration imported successfully!');
+        }
+      } catch (error) {
+        console.error('Error importing config:', error);
+        toast.error('Failed to import configuration');
+      }
+    };
+    reader.readAsText(file);
+    
+    // Reset the input
+    event.target.value = '';
+  };
+
+  const updateSetting = (category: string, key: string, value: any) => {
+    setSettings(prev => ({
+      ...prev,
+      [category]: {
+        ...prev[category as keyof Settings],
+        [key]: {
+          ...prev[category as keyof Settings][key],
+          value
+        }
+      }
+    }));
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.push('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+      router.push('/login');
+    }
+  };
+
+  // Enhanced tabs with more sections
+  const tabs = [
+    { id: 'quest_system', label: 'Quest System', icon: Gamepad2, color: 'from-purple-500 to-pink-500' },
+    { id: 'level_progression', label: 'Level & Progression', icon: Trophy, color: 'from-yellow-500 to-orange-500' },
+    { id: 'security', label: 'Security & Auth', icon: Shield, color: 'from-red-500 to-pink-500' },
+    { id: 'platform', label: 'Platform', icon: Palette, color: 'from-blue-500 to-cyan-500' },
+    { id: 'monitoring', label: 'System Monitoring', icon: BarChart3, color: 'from-green-500 to-teal-500' },
+    { id: 'feature_flags', label: 'Feature Flags', icon: Flag, color: 'from-indigo-500 to-purple-500' },
+    { id: 'coach_system', label: 'Coach System', icon: Database, color: 'from-cyan-500 to-blue-500' }
+  ];
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400 text-lg">Loading Admin Settings...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-black text-white relative overflow-hidden">
+      {/* Animated Background */}
+      <div className="fixed inset-0 z-0">
+        {backgrounds.map((bg, index) => (
+          <div
+            key={index}
+            className={`absolute inset-0 transition-opacity duration-2000 ${
+              currentBg === index ? 'opacity-100' : 'opacity-0'
+            }`}
+            style={{
+              backgroundImage: `url(${bg})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              filter: 'brightness(0.3) blur(2px)',
+              transform: `scale(${currentBg === index ? 1.1 : 1.05})`
+            }}
+          />
+        ))}
+        
+        {/* Gradient Overlay */}
+        <div className="absolute inset-0 bg-gradient-to-br from-black/80 via-purple-900/50 to-blue-900/30" />
+        
+        {/* Floating Orbs */}
+        <div className="absolute top-20 left-20 w-96 h-96 bg-purple-500/20 rounded-full filter blur-3xl animate-pulse" />
+        <div className="absolute bottom-20 right-20 w-96 h-96 bg-blue-500/20 rounded-full filter blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
+      </div>
+
+      <div className="relative z-10">
+        <Navbar user={user} onLogout={handleLogout} />
+
+        {/* Header */}
+        <div className="bg-black/80 backdrop-blur-lg border-b border-purple-500/20 p-6">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-gradient-to-br from-purple-600 to-blue-600 rounded-xl">
+                <Crown className="w-8 h-8 text-yellow-400" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+                  Advanced System Administration
+                </h1>
+                <p className="text-gray-400">Comprehensive system management and configuration</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              {hasChanges && (
+                <div className="flex items-center gap-2 px-4 py-2 bg-yellow-500/20 border border-yellow-500/30 rounded-lg">
+                  <AlertCircle className="w-4 h-4 text-yellow-400" />
+                  <span className="text-yellow-400 text-sm">Unsaved changes</span>
+                </div>
+              )}
+              <div className="flex items-center gap-2 px-4 py-2 bg-green-500/20 border border-green-500/30 rounded-lg">
+                <CheckCircle className="w-4 h-4 text-green-400" />
+                <span className="text-green-400 text-sm">System Online</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-7xl mx-auto p-6">
+          <div className="grid grid-cols-12 gap-6">
+            {/* Enhanced Sidebar */}
+            <div className="col-span-12 lg:col-span-3">
+              <div className="bg-black/60 backdrop-blur-lg border border-purple-500/20 rounded-xl p-4">
+                <h3 className="text-purple-400 text-sm font-semibold uppercase tracking-wide mb-4">
+                  Settings Categories
+                </h3>
+                <div className="space-y-2">
+                  {tabs.map((tab) => {
+                    const Icon = tab.icon;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all ${
+                          activeTab === tab.id
+                            ? `bg-gradient-to-r ${tab.color} text-white shadow-lg`
+                            : 'text-gray-400 hover:text-white hover:bg-white/10'
+                        }`}
+                      >
+                        <Icon className="w-5 h-5" />
+                        <span className="font-medium text-sm">{tab.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Quick Stats */}
+              <div className="bg-black/60 backdrop-blur-lg border border-purple-500/20 rounded-xl p-4 mt-4">
+                <h4 className="text-white font-medium mb-3">Quick Stats</h4>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400 text-sm">Active Settings</span>
+                    <span className="text-white font-semibold">
+                      {Object.values(settings).reduce((count, section) => count + Object.keys(section).length, 0)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400 text-sm">Categories</span>
+                    <span className="text-purple-400 font-semibold">{tabs.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400 text-sm">Unsaved Changes</span>
+                    <span className={`font-semibold ${hasChanges ? 'text-yellow-400' : 'text-green-400'}`}>
+                      {hasChanges ? 'Yes' : 'None'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Main Content */}
+            <div className="col-span-12 lg:col-span-9">
+              <div className="bg-black/60 backdrop-blur-lg border border-purple-500/20 rounded-xl overflow-hidden">
+                {/* Content Header */}
+                <div className="p-6 border-b border-purple-500/20">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-bold text-white">
+                        {tabs.find(t => t.id === activeTab)?.label}
+                      </h2>
+                      <p className="text-gray-400 text-sm mt-1">
+                        {getTabDescription(activeTab)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Settings Content */}
+                <div className="p-6">
+                  {renderSettingsSection(activeTab)}
+                </div>
+
+                {/* Action Buttons - Only show for regular settings tabs */}
+                {!['monitoring', 'feature_flags'].includes(activeTab) && (
+                  <div className="p-6 border-t border-purple-500/20 bg-black/40">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={saveSettings}
+                          disabled={!hasChanges || saving}
+                          className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all ${
+                            hasChanges && !saving
+                              ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-lg'
+                              : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                          }`}
+                        >
+                          {saving ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            <>
+                              <Save className="w-4 h-4" />
+                              Save Changes
+                            </>
+                          )}
+                        </button>
+
+                        <button
+                          onClick={resetToDefaults}
+                          disabled={saving}
+                          className="flex items-center gap-2 px-4 py-3 border border-gray-600 hover:border-gray-500 text-gray-300 hover:text-white rounded-lg transition-all"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                          Reset to Defaults
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={exportConfig}
+                          className="flex items-center gap-2 px-4 py-3 border border-purple-500/30 hover:border-purple-500/50 text-purple-300 hover:text-purple-200 rounded-lg transition-all"
+                        >
+                          <Download className="w-4 h-4" />
+                          Export Config
+                        </button>
+
+                        <label className="flex items-center gap-2 px-4 py-3 border border-blue-500/30 hover:border-blue-500/50 text-blue-300 hover:text-blue-200 rounded-lg transition-all cursor-pointer">
+                          <Upload className="w-4 h-4" />
+                          Import Config
+                          <input
+                            type="file"
+                            accept=".json"
+                            onChange={importConfig}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  function getTabDescription(tabId: string): string {
+    const descriptions = {
+      quest_system: 'Configure quest generation, XP rewards, and game mechanics',
+      level_progression: 'Manage level requirements, titles, and progression systems',
+      security: 'Security settings, authentication, and access controls',
+      platform: 'UI customization, themes, and user experience settings',
+      monitoring: 'Real-time system monitoring, analytics, and performance metrics',
+      feature_flags: 'A/B testing, feature rollouts, and experimental features',
+      coach_system: 'Coach-related settings and relationship management'
+    };
+    return descriptions[tabId as keyof typeof descriptions] || '';
+  }
+
+  function renderSettingsSection(section: string) {
+    // Handle special sections with their own components
+    if (section === 'monitoring') {
+      return <SystemMonitoring />;
+    }
+    
+    if (section === 'feature_flags') {
+      return <FeatureFlags />;
+    }
+
+    // Regular settings sections
+    const sectionSettings = settings[section as keyof Settings] || {};
+    
+    if (Object.keys(sectionSettings).length === 0) {
+      return (
+        <div className="text-center py-12">
+          <Settings className="w-12 h-12 text-gray-500 mx-auto mb-4" />
+          <p className="text-gray-400 mb-2">No settings available for this section</p>
+          <p className="text-gray-500 text-sm">Settings will appear here once loaded from the server</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {Object.entries(sectionSettings).map(([key, setting]) => 
+          renderSettingItem(section, key, setting)
+        )}
+      </div>
+    );
+  }
+
+  function renderSettingItem(category: string, key: string, setting: SettingValue) {
+    const displayName = formatSettingName(key);
+    
+    return (
+      <div key={key} className="bg-white/5 border border-white/10 rounded-lg p-4 hover:border-purple-500/30 transition-all">
+        <div className="flex items-start justify-between mb-2">
+          <div>
+            <h4 className="text-white font-medium">{displayName}</h4>
+            <p className="text-gray-400 text-sm mt-1">{setting.description}</p>
+          </div>
+          {renderSettingStatus(setting.value, setting.type)}
+        </div>
+        
+        <div className="mt-4">
+          {renderSettingControl(category, key, setting)}
+        </div>
+      </div>
+    );
+  }
+
+  function renderSettingStatus(value: any, type: string) {
+    if (type === 'boolean') {
+      return value ? (
+        <CheckCircle className="w-5 h-5 text-green-400" />
+      ) : (
+        <Clock className="w-5 h-5 text-gray-500" />
+      );
+    }
+    return null;
+  }
+
+  function renderSettingControl(category: string, key: string, setting: SettingValue) {
+    const { value, type } = setting;
+
+    switch (type) {
+      case 'boolean':
+        return (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => updateSetting(category, key, !value)}
+              className={`relative w-12 h-6 rounded-full transition-all ${
+                value ? 'bg-gradient-to-r from-purple-600 to-blue-600' : 'bg-gray-600'
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-all ${
+                  value ? 'left-6' : 'left-0.5'
+                }`}
+              />
+            </button>
+            <span className="text-sm text-gray-300">
+              {value ? 'Enabled' : 'Disabled'}
+            </span>
+          </div>
+        );
+
+      case 'number':
+        if (key.includes('count') || key.includes('multiplier') || key.includes('attempts') || key.includes('days')) {
+          return (
+            <div className="space-y-3">
+              <input
+                type="range"
+                min={getSliderMin(key)}
+                max={getSliderMax(key)}
+                step={getSliderStep(key)}
+                value={value || getSliderMin(key)}
+                onChange={(e) => updateSetting(category, key, parseFloat(e.target.value))}
+                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+              />
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-400">{getSliderMin(key)}</span>
+                <div className="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-md font-medium">
+                  {value || 0}{getValueUnit(key)}
+                </div>
+                <span className="text-gray-400">{getSliderMax(key)}</span>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <input
+            type="number"
+            value={value || ''}
+            onChange={(e) => updateSetting(category, key, parseFloat(e.target.value) || 0)}
+            className="w-full px-3 py-2 bg-black/50 border border-gray-600 rounded-lg text-white focus:border-purple-500 focus:outline-none"
+          />
+        );
+
+      case 'string':
+        if (key.includes('theme') || key.includes('method') || key.includes('level') || key.includes('model')) {
+          return (
+            <select
+              value={value || ''}
+              onChange={(e) => updateSetting(category, key, e.target.value)}
+              className="w-full px-3 py-2 bg-black/50 border border-gray-600 rounded-lg text-white focus:border-purple-500 focus:outline-none"
+            >
+              {getSelectOptions(key).map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          );
+        }
+        if (key.includes('message') || key.includes('welcome')) {
+          return (
+            <textarea
+              value={value || ''}
+              onChange={(e) => updateSetting(category, key, e.target.value)}
+              rows={3}
+              className="w-full px-3 py-2 bg-black/50 border border-gray-600 rounded-lg text-white focus:border-purple-500 focus:outline-none resize-none"
+            />
+          );
+        }
+        return (
+          <input
+            type="text"
+            value={value || ''}
+            onChange={(e) => updateSetting(category, key, e.target.value)}
+            className="w-full px-3 py-2 bg-black/50 border border-gray-600 rounded-lg text-white focus:border-purple-500 focus:outline-none"
+          />
+        );
+
+      default:
+        return (
+          <input
+            type="text"
+            value={typeof value === 'object' ? JSON.stringify(value) : (value || '')}
+            onChange={(e) => updateSetting(category, key, e.target.value)}
+            className="w-full px-3 py-2 bg-black/50 border border-gray-600 rounded-lg text-white focus:border-purple-500 focus:outline-none"
+          />
+        );
+    }
+  }
+
+  // All your existing helper functions remain the same
+  function formatSettingName(key: string): string {
+    return key
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, l => l.toUpperCase())
+      .replace(/Xp/g, 'XP')
+      .replace(/Ai/g, 'AI')
+      .replace(/Ip/g, 'IP')
+      .replace(/2fa/g, '2FA');
+  }
+
+  function getSliderMin(key: string): number {
+    const mins: Record<string, number> = {
+      daily_quest_count: 1,
+      weekly_quest_count: 1,
+      level_multiplier: 1.0,
+      streak_bonus_xp: 0,
+      base_xp_per_level: 50,
+      max_level_cap: 0,
+      max_login_attempts: 3,
+      session_lifetime_days: 1,
+      password_min_length: 4,
+      background_animation_speed: 1,
+      performance_alert_threshold: 100,
+      data_retention_days: 7
+    };
+    return mins[key] || 0;
+  }
+
+  function getSliderMax(key: string): number {
+    const maxs: Record<string, number> = {
+      daily_quest_count: 20,
+      weekly_quest_count: 10,
+      level_multiplier: 5.0,
+      streak_bonus_xp: 500,
+      base_xp_per_level: 500,
+      max_level_cap: 1000,
+      max_login_attempts: 20,
+      session_lifetime_days: 90,
+      password_min_length: 32,
+      background_animation_speed: 10,
+      performance_alert_threshold: 5000,
+      data_retention_days: 365
+    };
+    return maxs[key] || 100;
+  }
+
+  function getSliderStep(key: string): number {
+    if (key.includes('multiplier')) return 0.1;
+    return 1;
+  }
+
+  function getValueUnit(key: string): string {
+    if (key.includes('xp')) return ' XP';
+    if (key.includes('days')) return ' days';
+    if (key.includes('attempts')) return ' attempts';
+    if (key.includes('threshold')) return 'ms';
+    if (key.includes('hour')) return ':00';
+    if (key.includes('multiplier')) return 'x';
+    return '';
+  }
+
+  function getSelectOptions(key: string): Array<{value: string, label: string}> {
+    const options: Record<string, Array<{value: string, label: string}>> = {
+      default_theme: [
+        { value: 'dark', label: 'Dark Mode' },
+        { value: 'light', label: 'Light Mode' },
+        { value: 'auto', label: 'Auto (System)' },
+        { value: 'purple', label: 'Purple Theme' },
+        { value: 'blue', label: 'Blue Theme' }
+      ],
+      two_factor_method: [
+        { value: 'google_auth', label: 'Google Authenticator' },
+        { value: 'sms', label: 'SMS' },
+        { value: 'email', label: 'Email' }
+      ],
+      ai_quest_model: [
+        { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+        { value: 'claude-3-sonnet', label: 'Claude-3 Sonnet' },
+        { value: 'custom', label: 'Custom Model' }
+      ],
+      error_reporting_level: [
+        { value: 'all', label: 'All Errors' },
+        { value: 'critical', label: 'Critical Only' },
+        { value: 'custom', label: 'Custom Filter' }
+      ]
+    };
+    return options[key] || [];
+  }
+}
+
+
+
+
+
 app/admin/page.tsx
 'use client';
 import { useEffect, useState } from 'react';
@@ -5334,6 +6050,7 @@ const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 
 
 
+
 globals.css
 /* app/globals.css - Enhanced Attractive UI */
 
@@ -7268,6 +7985,457 @@ export default function AdminStats({ stats, onRefresh, onQuestsClick,  onUsersCl
 
 
 
+component/admin/FeatureFlags.tsx
+// File: frontend/components/admin/FeatureFlags.tsx
+'use client';
+
+import { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
+import { adminSettingsAPI, FeatureFlag } from '@/lib/adminSettings';
+import { 
+  Plus, Edit, Trash2, Users, Percent, 
+  CheckCircle, Clock, AlertCircle, Eye, Settings
+} from 'lucide-react';
+
+interface FeatureFlagModalProps {
+  flag?: FeatureFlag;
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (flag: FeatureFlag) => void;
+}
+
+const FeatureFlagModal: React.FC<FeatureFlagModalProps> = ({ 
+  flag, 
+  isOpen, 
+  onClose, 
+  onSave 
+}) => {
+  const [formData, setFormData] = useState({
+    flag_key: '',
+    flag_name: '',
+    description: '',
+    is_enabled: false,
+    rollout_percentage: 0,
+    target_user_types: [] as string[]
+  });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (flag) {
+      setFormData({
+        flag_key: flag.flag_key,
+        flag_name: flag.flag_name,
+        description: flag.description || '',
+        is_enabled: flag.is_enabled,
+        rollout_percentage: flag.rollout_percentage,
+        target_user_types: flag.target_user_types || []
+      });
+    } else {
+      setFormData({
+        flag_key: '',
+        flag_name: '',
+        description: '',
+        is_enabled: false,
+        rollout_percentage: 0,
+        target_user_types: []
+      });
+    }
+  }, [flag, isOpen]);
+
+  const handleSave = async () => {
+    if (!formData.flag_key || !formData.flag_name) {
+      toast.error('Flag key and name are required');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      let savedFlag;
+      if (flag) {
+        savedFlag = await adminSettingsAPI.updateFeatureFlag(flag.flag_id, formData);
+      } else {
+        savedFlag = await adminSettingsAPI.createFeatureFlag(formData);
+      }
+      
+      onSave(savedFlag);
+      toast.success(`Feature flag ${flag ? 'updated' : 'created'} successfully!`);
+      onClose();
+    } catch (error) {
+      console.error('Error saving feature flag:', error);
+      toast.error('Failed to save feature flag');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleUserType = (userType: string) => {
+    setFormData(prev => ({
+      ...prev,
+      target_user_types: prev.target_user_types.includes(userType)
+        ? prev.target_user_types.filter(t => t !== userType)
+        : [...prev.target_user_types, userType]
+    }));
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-gray-900 border border-purple-500/20 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6 border-b border-purple-500/20">
+          <h2 className="text-xl font-bold text-white">
+            {flag ? 'Edit Feature Flag' : 'Create Feature Flag'}
+          </h2>
+          <p className="text-gray-400 text-sm mt-1">
+            Configure feature flags for A/B testing and gradual rollouts
+          </p>
+        </div>
+
+        <div className="p-6 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Flag Key *
+              </label>
+              <input
+                type="text"
+                value={formData.flag_key}
+                onChange={(e) => setFormData(prev => ({ ...prev, flag_key: e.target.value }))}
+                placeholder="new_feature_enabled"
+                className="w-full px-3 py-2 bg-black/50 border border-gray-600 rounded-lg text-white focus:border-purple-500 focus:outline-none"
+                disabled={!!flag} // Can't edit key of existing flag
+              />
+              <p className="text-gray-500 text-xs mt-1">
+                Unique identifier for this flag (lowercase, underscores only)
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Display Name *
+              </label>
+              <input
+                type="text"
+                value={formData.flag_name}
+                onChange={(e) => setFormData(prev => ({ ...prev, flag_name: e.target.value }))}
+                placeholder="New Feature Toggle"
+                className="w-full px-3 py-2 bg-black/50 border border-gray-600 rounded-lg text-white focus:border-purple-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Description
+            </label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+              placeholder="Describe what this feature flag controls..."
+              rows={3}
+              className="w-full px-3 py-2 bg-black/50 border border-gray-600 rounded-lg text-white focus:border-purple-500 focus:outline-none resize-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-3">
+                Flag Status
+              </label>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setFormData(prev => ({ ...prev, is_enabled: !prev.is_enabled }))}
+                  className={`relative w-12 h-6 rounded-full transition-all ${
+                    formData.is_enabled ? 'bg-gradient-to-r from-green-600 to-green-500' : 'bg-gray-600'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-all ${
+                      formData.is_enabled ? 'left-6' : 'left-0.5'
+                    }`}
+                  />
+                </button>
+                <span className="text-sm text-gray-300">
+                  {formData.is_enabled ? 'Enabled' : 'Disabled'}
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Rollout Percentage
+              </label>
+              <div className="space-y-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={formData.rollout_percentage}
+                  onChange={(e) => setFormData(prev => ({ ...prev, rollout_percentage: parseInt(e.target.value) }))}
+                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                />
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">0%</span>
+                  <div className="px-2 py-1 bg-purple-500/20 text-purple-300 rounded font-medium">
+                    {formData.rollout_percentage}%
+                  </div>
+                  <span className="text-gray-400">100%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-3">
+              Target User Types
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {['adventurer', 'coach', 'admin'].map(userType => (
+                <button
+                  key={userType}
+                  onClick={() => toggleUserType(userType)}
+                  className={`px-3 py-1 rounded-lg text-sm font-medium transition-all ${
+                    formData.target_user_types.includes(userType)
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  {userType.charAt(0).toUpperCase() + userType.slice(1)}
+                </button>
+              ))}
+            </div>
+            <p className="text-gray-500 text-xs mt-2">
+              Leave empty to target all user types
+            </p>
+          </div>
+        </div>
+
+        <div className="p-6 border-t border-purple-500/20 flex items-center justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 border border-gray-600 text-gray-300 rounded-lg hover:border-gray-500 hover:text-white transition-all"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 flex items-center gap-2"
+          >
+            {saving && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+            {flag ? 'Update Flag' : 'Create Flag'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default function FeatureFlags() {
+  const [flags, setFlags] = useState<FeatureFlag[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [modalFlag, setModalFlag] = useState<FeatureFlag | undefined>();
+  const [showModal, setShowModal] = useState(false);
+
+  useEffect(() => {
+    fetchFlags();
+  }, []);
+
+  const fetchFlags = async () => {
+    try {
+      const flagsData = await adminSettingsAPI.getFeatureFlags();
+      setFlags(flagsData);
+    } catch (error) {
+      console.error('Error fetching feature flags:', error);
+      toast.error('Failed to load feature flags');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleFlag = async (flag: FeatureFlag) => {
+    try {
+      const updatedFlag = await adminSettingsAPI.updateFeatureFlag(flag.flag_id, {
+        is_enabled: !flag.is_enabled
+      });
+      
+      setFlags(prev => prev.map(f => f.flag_id === flag.flag_id ? updatedFlag : f));
+      toast.success(`Flag ${updatedFlag.is_enabled ? 'enabled' : 'disabled'} successfully!`);
+    } catch (error) {
+      console.error('Error toggling flag:', error);
+      toast.error('Failed to toggle flag');
+    }
+  };
+
+  const handleDeleteFlag = async (flag: FeatureFlag) => {
+    if (!confirm(`Are you sure you want to delete the "${flag.flag_name}" feature flag?`)) {
+      return;
+    }
+
+    try {
+      await adminSettingsAPI.deleteFeatureFlag(flag.flag_id);
+      setFlags(prev => prev.filter(f => f.flag_id !== flag.flag_id));
+      toast.success('Feature flag deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting flag:', error);
+      toast.error('Failed to delete flag');
+    }
+  };
+
+  const handleEditFlag = (flag: FeatureFlag) => {
+    setModalFlag(flag);
+    setShowModal(true);
+  };
+
+  const handleCreateFlag = () => {
+    setModalFlag(undefined);
+    setShowModal(true);
+  };
+
+  const handleSaveFlag = (savedFlag: FeatureFlag) => {
+    if (modalFlag) {
+      // Update existing
+      setFlags(prev => prev.map(f => f.flag_id === savedFlag.flag_id ? savedFlag : f));
+    } else {
+      // Add new
+      setFlags(prev => [savedFlag, ...prev]);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="w-8 h-8 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-white">Feature Flags</h3>
+          <p className="text-gray-400 text-sm">
+            Manage A/B testing and gradual feature rollouts
+          </p>
+        </div>
+        <button
+          onClick={handleCreateFlag}
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all"
+        >
+          <Plus className="w-4 h-4" />
+          Create Flag
+        </button>
+      </div>
+
+      {flags.length === 0 ? (
+        <div className="text-center py-12">
+          <Settings className="w-12 h-12 text-gray-500 mx-auto mb-4" />
+          <p className="text-gray-400 mb-4">No feature flags created yet</p>
+          <button
+            onClick={handleCreateFlag}
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all"
+          >
+            Create Your First Flag
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4">
+          {flags.map((flag) => (
+            <div
+              key={flag.flag_id}
+              className="bg-white/5 border border-white/10 rounded-lg p-4 hover:border-purple-500/30 transition-all"
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <h4 className="text-white font-medium">{flag.flag_name}</h4>
+                    <div className="flex items-center gap-2">
+                      {flag.is_enabled ? (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-green-500/20 text-green-400 rounded-md text-xs">
+                          <CheckCircle className="w-3 h-3" />
+                          Enabled
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-gray-500/20 text-gray-400 rounded-md text-xs">
+                          <Clock className="w-3 h-3" />
+                          Disabled
+                        </div>
+                      )}
+                      
+                      {flag.rollout_percentage < 100 && flag.is_enabled && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-yellow-500/20 text-yellow-400 rounded-md text-xs">
+                          <Percent className="w-3 h-3" />
+                          {flag.rollout_percentage}%
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <p className="text-gray-400 text-sm mb-2">{flag.description}</p>
+                  
+                  <div className="flex items-center gap-4 text-xs text-gray-500">
+                    <span>Key: {flag.flag_key}</span>
+                    {flag.target_user_types && flag.target_user_types.length > 0 && (
+                      <div className="flex items-center gap-1">
+                        <Users className="w-3 h-3" />
+                        {flag.target_user_types.join(', ')}
+                      </div>
+                    )}
+                    {flag.creator && (
+                      <span>Created by: {flag.creator.username}</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleToggleFlag(flag)}
+                    className={`relative w-10 h-5 rounded-full transition-all ${
+                      flag.is_enabled ? 'bg-green-600' : 'bg-gray-600'
+                    }`}
+                  >
+                    <div
+                      className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${
+                        flag.is_enabled ? 'left-5' : 'left-0.5'
+                      }`}
+                    />
+                  </button>
+                  
+                  <button
+                    onClick={() => handleEditFlag(flag)}
+                    className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all"
+                  >
+                    <Edit className="w-4 h-4" />
+                  </button>
+                  
+                  <button
+                    onClick={() => handleDeleteFlag(flag)}
+                    className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <FeatureFlagModal
+        flag={modalFlag}
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        onSave={handleSaveFlag}
+      />
+    </div>
+  );
+}
+
+
+
+
+
 
 component/admin/QuestManagementModal.tsx
 'use client';
@@ -7830,6 +8998,504 @@ export default function QuestManagementModal({ isOpen, onClose }: QuestModalProp
     </div>
   );
 }
+
+
+
+
+
+component/admin/SystemMonitoring.tsx
+// File: frontend/components/admin/SystemMonitoring.tsx
+'use client';
+
+import { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
+import { adminSettingsAPI, SystemHealth, AnalyticsData } from '@/lib/adminSettings';
+import { 
+  Activity, Database, Users, Clock, AlertTriangle, 
+  CheckCircle, TrendingUp, BarChart3, Zap, Globe,
+  RefreshCw, Download, Calendar
+} from 'lucide-react';
+
+interface MetricCardProps {
+  title: string;
+  value: string | number;
+  subtitle?: string;
+  icon: React.ComponentType<any>;
+  color: string;
+  trend?: 'up' | 'down' | 'neutral';
+}
+
+const MetricCard: React.FC<MetricCardProps> = ({ 
+  title, 
+  value, 
+  subtitle, 
+  icon: Icon, 
+  color, 
+  trend 
+}) => {
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-lg p-4 hover:border-purple-500/30 transition-all">
+      <div className="flex items-center justify-between mb-3">
+        <div className={`p-2 rounded-lg bg-gradient-to-br ${color}`}>
+          <Icon className="w-5 h-5 text-white" />
+        </div>
+        {trend && (
+          <div className={`text-xs font-medium ${
+            trend === 'up' ? 'text-green-400' : 
+            trend === 'down' ? 'text-red-400' : 
+            'text-gray-400'
+          }`}>
+            {trend === 'up' ? '↗' : trend === 'down' ? '↘' : '→'}
+          </div>
+        )}
+      </div>
+      
+      <div>
+        <h3 className="text-2xl font-bold text-white mb-1">{value}</h3>
+        <p className="text-gray-400 text-sm">{title}</p>
+        {subtitle && (
+          <p className="text-gray-500 text-xs mt-1">{subtitle}</p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+interface PerformanceChartProps {
+  metrics: Array<{
+    log_id: number;
+    endpoint: string;
+    method: string;
+    response_time_ms: number;
+    status_code: number;
+    created_at: string;
+  }>;
+}
+
+const PerformanceChart: React.FC<PerformanceChartProps> = ({ metrics }) => {
+  const [selectedTimeframe, setSelectedTimeframe] = useState('1h');
+
+  // Group metrics by time intervals
+  const groupMetricsByTime = (timeframe: string) => {
+    const now = new Date();
+    const intervals: { [key: string]: number[] } = {};
+    
+    metrics.forEach(metric => {
+      const metricTime = new Date(metric.created_at);
+      let intervalKey: string;
+      
+      if (timeframe === '1h') {
+        // Group by 5-minute intervals
+        const minutes = Math.floor(metricTime.getMinutes() / 5) * 5;
+        intervalKey = `${metricTime.getHours()}:${minutes.toString().padStart(2, '0')}`;
+      } else {
+        // Group by hours
+        intervalKey = `${metricTime.getHours()}:00`;
+      }
+      
+      if (!intervals[intervalKey]) {
+        intervals[intervalKey] = [];
+      }
+      intervals[intervalKey].push(metric.response_time_ms);
+    });
+
+    // Calculate averages
+    return Object.entries(intervals)
+      .map(([time, responseTimes]) => ({
+        time,
+        avg: Math.round(responseTimes.reduce((sum, rt) => sum + rt, 0) / responseTimes.length),
+        max: Math.max(...responseTimes),
+        count: responseTimes.length
+      }))
+      .sort((a, b) => a.time.localeCompare(b.time))
+      .slice(-12); // Show last 12 data points
+  };
+
+  const chartData = groupMetricsByTime(selectedTimeframe);
+  const maxValue = Math.max(...chartData.map(d => d.max), 1);
+
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-lg p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-lg font-semibold text-white">Response Time Trends</h3>
+        <div className="flex items-center gap-2">
+          {['1h', '6h', '24h'].map(timeframe => (
+            <button
+              key={timeframe}
+              onClick={() => setSelectedTimeframe(timeframe)}
+              className={`px-3 py-1 rounded text-sm transition-all ${
+                selectedTimeframe === timeframe
+                  ? 'bg-purple-600 text-white'
+                  : 'text-gray-400 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              {timeframe}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="h-64 flex items-end justify-between gap-1">
+        {chartData.map((data, index) => (
+          <div key={index} className="flex-1 flex flex-col items-center">
+            <div className="w-full flex flex-col justify-end h-48 gap-1">
+              {/* Max response time bar */}
+              <div
+                className="w-full bg-red-500/30 rounded-t"
+                style={{ height: `${(data.max / maxValue) * 100}%`, minHeight: '2px' }}
+                title={`Max: ${data.max}ms`}
+              />
+              {/* Average response time bar */}
+              <div
+                className="w-full bg-gradient-to-t from-purple-600 to-blue-500 rounded-t"
+                style={{ height: `${(data.avg / maxValue) * 100}%`, minHeight: '4px' }}
+                title={`Avg: ${data.avg}ms, Requests: ${data.count}`}
+              />
+            </div>
+            <div className="text-xs text-gray-400 mt-2 transform -rotate-45 origin-top">
+              {data.time}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-center gap-4 mt-4 text-xs">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-2 bg-gradient-to-r from-purple-600 to-blue-500 rounded"></div>
+          <span className="text-gray-400">Average Response Time</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-2 bg-red-500/30 rounded"></div>
+          <span className="text-gray-400">Maximum Response Time</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default function SystemMonitoring() {
+  const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [analyticsTimeframe, setAnalyticsTimeframe] = useState<'24h' | '7d' | '30d'>('7d');
+
+  useEffect(() => {
+    fetchMonitoringData();
+  }, [analyticsTimeframe]);
+
+  const fetchMonitoringData = async () => {
+    setRefreshing(true);
+    try {
+      const [healthData, analyticsData] = await Promise.all([
+        adminSettingsAPI.getSystemHealth(),
+        adminSettingsAPI.getAnalytics(analyticsTimeframe)
+      ]);
+      
+      setSystemHealth(healthData);
+      setAnalytics(analyticsData);
+    } catch (error) {
+      console.error('Error fetching monitoring data:', error);
+      toast.error('Failed to load monitoring data');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const exportAnalytics = async () => {
+    try {
+      const data = {
+        system_health: systemHealth,
+        analytics: analytics,
+        exported_at: new Date().toISOString()
+      };
+      
+      const blob = new Blob([JSON.stringify(data, null, 2)], { 
+        type: 'application/json' 
+      });
+      
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `system-monitoring-${Date.now()}.json`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      
+      toast.success('Monitoring data exported successfully!');
+    } catch (error) {
+      console.error('Error exporting analytics:', error);
+      toast.error('Failed to export monitoring data');
+    }
+  };
+
+  if (loading && !systemHealth) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="w-8 h-8 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-white">System Monitoring</h3>
+          <p className="text-gray-400 text-sm">
+            Real-time system health and performance metrics
+          </p>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          <button
+            onClick={exportAnalytics}
+            className="flex items-center gap-2 px-3 py-2 border border-purple-500/30 text-purple-300 rounded-lg hover:border-purple-500/50 transition-all"
+          >
+            <Download className="w-4 h-4" />
+            Export
+          </button>
+          
+          <button
+            onClick={fetchMonitoringData}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* System Health Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard
+          title="Database Status"
+          value={systemHealth?.database === 'healthy' ? 'Healthy' : 'Unhealthy'}
+          icon={Database}
+          color={systemHealth?.database === 'healthy' ? 'from-green-600 to-green-500' : 'from-red-600 to-red-500'}
+          trend={systemHealth?.database === 'healthy' ? 'neutral' : 'down'}
+        />
+        
+        <MetricCard
+          title="Avg Response Time"
+          value={`${systemHealth?.average_response_time || 0}ms`}
+          subtitle="Last 24 hours"
+          icon={Zap}
+          color={
+            (systemHealth?.average_response_time || 0) < 200 ? 'from-green-600 to-green-500' :
+            (systemHealth?.average_response_time || 0) < 500 ? 'from-yellow-600 to-yellow-500' :
+            'from-red-600 to-red-500'
+          }
+          trend={
+            (systemHealth?.average_response_time || 0) < 200 ? 'up' :
+            (systemHealth?.average_response_time || 0) < 500 ? 'neutral' : 'down'
+          }
+        />
+        
+        <MetricCard
+          title="Active Users"
+          value={systemHealth?.active_users || 0}
+          subtitle="Current sessions"
+          icon={Users}
+          color="from-blue-600 to-blue-500"
+          trend="neutral"
+        />
+        
+        <MetricCard
+          title="Error Rate"
+          value={`${Object.values(systemHealth?.error_counts || {}).reduce((sum, count) => sum + count, 0)}`}
+          subtitle="Last 24 hours"
+          icon={AlertTriangle}
+          color="from-orange-600 to-orange-500"
+          trend="down"
+        />
+      </div>
+
+      {/* Performance Chart */}
+      {systemHealth?.performance_metrics && systemHealth.performance_metrics.length > 0 && (
+        <PerformanceChart metrics={systemHealth.performance_metrics} />
+      )}
+
+      {/* Error Summary */}
+      {systemHealth?.error_counts && Object.keys(systemHealth.error_counts).length > 0 && (
+        <div className="bg-white/5 border border-white/10 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-white mb-4">Error Summary (24h)</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {Object.entries(systemHealth.error_counts).map(([level, count]) => (
+              <div key={level} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className={`w-3 h-3 rounded-full ${
+                    level === 'critical' ? 'bg-red-500' :
+                    level === 'error' ? 'bg-orange-500' :
+                    level === 'warn' ? 'bg-yellow-500' :
+                    'bg-blue-500'
+                  }`} />
+                  <span className="text-gray-300 capitalize">{level}</span>
+                </div>
+                <span className="text-white font-semibold">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Analytics Section */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-white">User Analytics</h3>
+          <div className="flex items-center gap-2">
+            {(['24h', '7d', '30d'] as const).map(timeframe => (
+              <button
+                key={timeframe}
+                onClick={() => setAnalyticsTimeframe(timeframe)}
+                className={`px-3 py-1 rounded text-sm transition-all ${
+                  analyticsTimeframe === timeframe
+                    ? 'bg-purple-600 text-white'
+                    : 'text-gray-400 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                {timeframe === '24h' ? '24 Hours' : timeframe === '7d' ? '7 Days' : '30 Days'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <MetricCard
+            title="Unique Users"
+            value={analytics?.unique_users || 0}
+            subtitle={`In last ${analyticsTimeframe}`}
+            icon={Users}
+            color="from-purple-600 to-purple-500"
+          />
+          
+          <MetricCard
+            title="Total Events"
+            value={analytics?.total_events || 0}
+            subtitle="All user interactions"
+            icon={Activity}
+            color="from-blue-600 to-blue-500"
+          />
+          
+          <MetricCard
+            title="Page Views"
+            value={analytics?.event_counts?.pageview || 0}
+            subtitle="Navigation events"
+            icon={Globe}
+            color="from-green-600 to-green-500"
+          />
+        </div>
+
+        {/* Event Breakdown */}
+        {analytics?.event_counts && Object.keys(analytics.event_counts).length > 0 && (
+          <div className="bg-white/5 border border-white/10 rounded-lg p-6">
+            <h4 className="text-lg font-semibold text-white mb-4">Event Breakdown</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {Object.entries(analytics.event_counts)
+                .sort(([,a], [,b]) => (b as number) - (a as number))
+                .map(([eventType, count]) => (
+                <div key={eventType} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                  <span className="text-gray-300 capitalize">
+                    {eventType.replace(/_/g, ' ')}
+                  </span>
+                  <span className="text-white font-semibold">{count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Page Views Chart */}
+        {analytics?.page_views_by_day && Object.keys(analytics.page_views_by_day).length > 0 && (
+          <div className="bg-white/5 border border-white/10 rounded-lg p-6">
+            <h4 className="text-lg font-semibold text-white mb-4">Daily Page Views</h4>
+            <div className="h-48 flex items-end justify-between gap-2">
+              {Object.entries(analytics.page_views_by_day)
+                .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+                .slice(-14) // Show last 14 days
+                .map(([date, views], index) => {
+                  const maxViews = Math.max(...Object.values(analytics.page_views_by_day));
+                  const height = maxViews > 0 ? (views / maxViews) * 100 : 0;
+                  
+                  return (
+                    <div key={date} className="flex-1 flex flex-col items-center">
+                      <div
+                        className="w-full bg-gradient-to-t from-purple-600 to-blue-500 rounded-t min-h-[4px] transition-all hover:from-purple-500 hover:to-blue-400"
+                        style={{ height: `${height}%` }}
+                        title={`${date}: ${views} views`}
+                      />
+                      <div className="text-xs text-gray-400 mt-2 transform -rotate-45 origin-top">
+                        {new Date(date).toLocaleDateString('en-US', { 
+                          month: 'short', 
+                          day: 'numeric' 
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
+              }
+            </div>
+          </div>
+        )}
+
+        {/* Recent Activity */}
+        {analytics?.recent_events && analytics.recent_events.length > 0 && (
+          <div className="bg-white/5 border border-white/10 rounded-lg p-6">
+            <h4 className="text-lg font-semibold text-white mb-4">Recent Activity</h4>
+            <div className="space-y-3 max-h-64 overflow-y-auto">
+              {analytics.recent_events.slice(0, 20).map((event) => (
+                <div key={event.analytics_id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-2 h-2 rounded-full ${
+                      event.event_type === 'pageview' ? 'bg-blue-500' :
+                      event.event_type === 'quest_complete' ? 'bg-green-500' :
+                      event.event_type === 'level_up' ? 'bg-yellow-500' :
+                      'bg-purple-500'
+                    }`} />
+                    <div>
+                      <span className="text-white text-sm capitalize">
+                        {event.event_type.replace(/_/g, ' ')}
+                      </span>
+                      {event.page_url && (
+                        <p className="text-gray-400 text-xs">{event.page_url}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-gray-400 text-xs">
+                    {new Date(event.created_at).toLocaleTimeString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* System Status Footer */}
+      <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-5 h-5 text-green-400" />
+            <span className="text-gray-300">System Status: All services operational</span>
+          </div>
+          
+          <div className="flex items-center gap-2 text-gray-400 text-sm">
+            <Clock className="w-4 h-4" />
+            Last updated: {systemHealth?.timestamp ? 
+              new Date(systemHealth.timestamp).toLocaleString() : 
+              'Never'
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 
 
 
@@ -9473,6 +11139,378 @@ export function useStats() {
 
   return { stats, loading };
 }
+
+
+
+
+lib/adminSettings.ts
+// File: frontend/lib/adminSettings.ts
+import api from './api';
+
+export interface SettingValue {
+  value: any;
+  type: 'string' | 'number' | 'boolean' | 'json';
+  description: string;
+}
+
+export interface Settings {
+  quest_system: Record<string, SettingValue>;
+  level_progression: Record<string, SettingValue>;
+  security: Record<string, SettingValue>;
+  platform: Record<string, SettingValue>;
+  monitoring: Record<string, SettingValue>;
+  coach_system: Record<string, SettingValue>;
+}
+
+export interface FeatureFlag {
+  flag_id: number;
+  flag_key: string;
+  flag_name: string;
+  description?: string;
+  is_enabled: boolean;
+  rollout_percentage: number;
+  target_user_types?: string[];
+  conditions?: any;
+  created_by?: number;
+  created_at: string;
+  updated_at: string;
+  creator?: {
+    username: string;
+    full_name: string;
+  };
+}
+
+export interface IPWhitelistEntry {
+  whitelist_id: number;
+  ip_address: string;
+  ip_range?: string;
+  description?: string;
+  created_by?: number;
+  created_at: string;
+  is_active: boolean;
+  creator?: {
+    username: string;
+  };
+}
+
+export interface SystemHealth {
+  database: 'healthy' | 'unhealthy';
+  average_response_time: number;
+  active_users: number;
+  error_counts: Record<string, number>;
+  performance_metrics: Array<{
+    log_id: number;
+    endpoint: string;
+    method: string;
+    response_time_ms: number;
+    status_code: number;
+    created_at: string;
+  }>;
+  timestamp: string;
+}
+
+export interface AnalyticsData {
+  timeframe: string;
+  unique_users: number;
+  total_events: number;
+  event_counts: Record<string, number>;
+  page_views_by_day: Record<string, number>;
+  recent_events: Array<{
+    analytics_id: number;
+    user_id?: number;
+    session_id?: string;
+    event_type: string;
+    event_data?: any;
+    page_url?: string;
+    created_at: string;
+  }>;
+}
+
+class AdminSettingsAPI {
+  // Settings Management
+  async getSettings(): Promise<Settings> {
+    const response = await api.get('/admin/settings');
+    return response.data.settings;
+  }
+
+  async updateSettings(settings: Settings): Promise<void> {
+    await api.put('/admin/settings', { settings });
+  }
+
+  async resetSettings(): Promise<void> {
+    await api.post('/admin/settings/reset');
+  }
+
+  async exportConfiguration(): Promise<Blob> {
+    const response = await api.get('/admin/settings/export', {
+      responseType: 'blob'
+    });
+    return response.data;
+  }
+
+  async importConfiguration(config: any): Promise<void> {
+    await api.post('/admin/settings/import', { config });
+  }
+
+  // Feature Flags Management
+  async getFeatureFlags(): Promise<FeatureFlag[]> {
+    const response = await api.get('/admin/settings/feature-flags');
+    return response.data.flags;
+  }
+
+  async createFeatureFlag(flagData: Partial<FeatureFlag>): Promise<FeatureFlag> {
+    const response = await api.post('/admin/settings/feature-flags', flagData);
+    return response.data.flag;
+  }
+
+  async updateFeatureFlag(flagId: number, flagData: Partial<FeatureFlag>): Promise<FeatureFlag> {
+    const response = await api.put(`/admin/settings/feature-flags/${flagId}`, flagData);
+    return response.data.flag;
+  }
+
+  async deleteFeatureFlag(flagId: number): Promise<void> {
+    await api.delete(`/admin/settings/feature-flags/${flagId}`);
+  }
+
+  // IP Whitelist Management
+  async getIPWhitelist(): Promise<IPWhitelistEntry[]> {
+    const response = await api.get('/admin/settings/ip-whitelist');
+    return response.data.whitelist;
+  }
+
+  async addIPToWhitelist(ipData: {
+    ip_address: string;
+    ip_range?: string;
+    description?: string;
+  }): Promise<IPWhitelistEntry> {
+    const response = await api.post('/admin/settings/ip-whitelist', ipData);
+    return response.data.entry;
+  }
+
+  async removeIPFromWhitelist(whitelistId: number): Promise<void> {
+    await api.delete(`/admin/settings/ip-whitelist/${whitelistId}`);
+  }
+
+  // System Monitoring
+  async getSystemHealth(): Promise<SystemHealth> {
+    const response = await api.get('/admin/settings/system-health');
+    return response.data.health;
+  }
+
+  async getAnalytics(timeframe: '24h' | '7d' | '30d' = '7d'): Promise<AnalyticsData> {
+    const response = await api.get(`/admin/settings/analytics?timeframe=${timeframe}`);
+    return response.data.analytics;
+  }
+
+  // Utility functions for settings formatting
+  formatSettingName(key: string): string {
+    return key
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, l => l.toUpperCase())
+      .replace(/Xp/g, 'XP')
+      .replace(/Ai/g, 'AI')
+      .replace(/Ip/g, 'IP')
+      .replace(/2fa/g, '2FA');
+  }
+
+  getSettingCategory(key: string): string {
+    if (key.includes('quest') || key.includes('xp') || key.includes('streak')) {
+      return 'quest_system';
+    } else if (key.includes('level') || key.includes('prestige') || key.includes('title')) {
+      return 'level_progression';
+    } else if (key.includes('login') || key.includes('session') || key.includes('password') || key.includes('ip') || key.includes('two_factor')) {
+      return 'security';
+    } else if (key.includes('theme') || key.includes('welcome') || key.includes('maintenance') || key.includes('logo') || key.includes('notification') || key.includes('background')) {
+      return 'platform';
+    } else if (key.includes('monitoring') || key.includes('analytics') || key.includes('error') || key.includes('performance') || key.includes('retention') || key.includes('ab_testing')) {
+      return 'monitoring';
+    } else if (key.includes('coach')) {
+      return 'coach_system';
+    }
+    return 'platform';
+  }
+
+  validateIPAddress(ip: string): boolean {
+    const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+    if (!ipRegex.test(ip)) return false;
+
+    const parts = ip.split('.');
+    return parts.every(part => {
+      const num = parseInt(part, 10);
+      return num >= 0 && num <= 255;
+    });
+  }
+
+  validateCIDR(cidr: string): boolean {
+    const cidrRegex = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/;
+    if (!cidrRegex.test(cidr)) return false;
+
+    const [ip, prefix] = cidr.split('/');
+    const prefixNum = parseInt(prefix, 10);
+    
+    return this.validateIPAddress(ip) && prefixNum >= 0 && prefixNum <= 32;
+  }
+
+  parseSettingValue(value: string, type: string): any {
+    switch (type) {
+      case 'number':
+        return parseFloat(value);
+      case 'boolean':
+        return value === 'true';
+      case 'json':
+        try {
+          return JSON.parse(value);
+        } catch {
+          return value;
+        }
+      default:
+        return value;
+    }
+  }
+
+  stringifySettingValue(value: any, type: string): string {
+    switch (type) {
+      case 'boolean':
+        return value.toString();
+      case 'number':
+        return value.toString();
+      case 'json':
+        return JSON.stringify(value);
+      default:
+        return value;
+    }
+  }
+
+  getDefaultValue(key: string, type: string): any {
+    const defaults: Record<string, any> = {
+      // Quest System
+      daily_quest_count: 8,
+      weekly_quest_count: 3,
+      level_multiplier: 1.5,
+      streak_bonus_xp: 50,
+      streak_bonus_enabled: true,
+      quest_refresh_hour: 0,
+      auto_generate_quests: true,
+      ai_quest_model: 'gpt-4-turbo',
+
+      // Level & Progression
+      base_xp_per_level: 100,
+      max_level_cap: 100,
+      title_unlocks_enabled: true,
+      prestige_system_enabled: false,
+      prestige_unlock_level: 50,
+
+      // Security
+      max_login_attempts: 5,
+      login_rate_limit_window: 900,
+      session_lifetime_days: 7,
+      two_factor_enabled: false,
+      two_factor_method: 'google_auth',
+      ip_whitelist_enabled: false,
+      password_min_length: 8,
+      password_require_special: true,
+      password_require_numbers: true,
+      password_require_uppercase: false,
+
+      // Platform
+      default_theme: 'dark',
+      background_animation_enabled: true,
+      background_animation_speed: 5,
+      notification_sounds_enabled: true,
+      welcome_message: 'Welcome to Solo Leveling! Start your journey to become stronger by completing daily quests and leveling up your skills.',
+      maintenance_mode_enabled: false,
+      maintenance_message: 'System maintenance in progress. Please check back soon.',
+      custom_logo_url: '',
+      custom_favicon_url: '',
+
+      // Monitoring
+      performance_monitoring_enabled: true,
+      performance_alert_threshold: 500,
+      user_analytics_enabled: true,
+      analytics_track_pageviews: true,
+      analytics_track_quest_completion: true,
+      analytics_track_device_info: false,
+      error_reporting_enabled: true,
+      error_reporting_level: 'all',
+      data_retention_days: 90,
+      ab_testing_enabled: false,
+
+      // Coach System
+      max_coach_students: 20,
+      coach_auto_approval: false,
+      coach_verification_required: true
+    };
+
+    return defaults[key] ?? (type === 'boolean' ? false : type === 'number' ? 0 : '');
+  }
+
+  getSettingDescription(key: string): string {
+    const descriptions: Record<string, string> = {
+      // Quest System
+      daily_quest_count: 'Number of daily quests assigned to each user',
+      weekly_quest_count: 'Number of weekly quests assigned to each user',
+      level_multiplier: 'Experience multiplier increase for each level',
+      streak_bonus_xp: 'Bonus XP awarded for maintaining daily streaks',
+      streak_bonus_enabled: 'Enable the streak bonus system',
+      quest_refresh_hour: 'Hour of day when daily quests refresh (24-hour format)',
+      auto_generate_quests: 'Enable AI-powered quest generation',
+      ai_quest_model: 'AI model used for quest generation',
+
+      // Level & Progression
+      base_xp_per_level: 'Base experience points required for first level',
+      max_level_cap: 'Maximum achievable level (0 = unlimited)',
+      title_unlocks_enabled: 'Enable automatic title unlocks at specific levels',
+      prestige_system_enabled: 'Enable prestige system for level resets',
+      prestige_unlock_level: 'Level required to unlock prestige system',
+
+      // Security
+      max_login_attempts: 'Maximum failed login attempts before rate limiting',
+      login_rate_limit_window: 'Rate limit window in seconds',
+      session_lifetime_days: 'Number of days before user sessions expire',
+      two_factor_enabled: 'Require 2FA for admin accounts',
+      two_factor_method: '2FA method: Google Authenticator, SMS, or Email',
+      ip_whitelist_enabled: 'Restrict admin access to specific IP addresses',
+      password_min_length: 'Minimum required password length',
+      password_require_special: 'Require special characters in passwords',
+      password_require_numbers: 'Require numbers in passwords',
+      password_require_uppercase: 'Require uppercase letters in passwords',
+
+      // Platform
+      default_theme: 'Default theme for new users',
+      background_animation_enabled: 'Enable animated backgrounds on dashboard',
+      background_animation_speed: 'Speed of background animations (1-10 scale)',
+      notification_sounds_enabled: 'Enable sound effects for notifications',
+      welcome_message: 'Welcome message displayed to new users',
+      maintenance_mode_enabled: 'Enable maintenance mode for system updates',
+      maintenance_message: 'Message displayed during maintenance mode',
+      custom_logo_url: 'URL for custom logo image',
+      custom_favicon_url: 'URL for custom favicon image',
+
+      // Monitoring
+      performance_monitoring_enabled: 'Track API response times and performance',
+      performance_alert_threshold: 'Response time threshold for alerts (milliseconds)',
+      user_analytics_enabled: 'Collect anonymized user behavior data',
+      analytics_track_pageviews: 'Track user page views',
+      analytics_track_quest_completion: 'Track quest completion rates',
+      analytics_track_device_info: 'Track user device information',
+      error_reporting_enabled: 'Enable automatic error logging and reporting',
+      error_reporting_level: 'Level of errors to report: all, critical, or custom',
+      data_retention_days: 'How long to keep analytics and log data (days)',
+      ab_testing_enabled: 'Enable A/B testing feature flags',
+
+      // Coach System
+      max_coach_students: 'Maximum number of students per coach',
+      coach_auto_approval: 'Automatically approve coach applications',
+      coach_verification_required: 'Require manual verification for coaches'
+    };
+
+    return descriptions[key] || 'System setting';
+  }
+}
+
+export const adminSettingsAPI = new AdminSettingsAPI();
+export default adminSettingsAPI;
+
 
 
 
