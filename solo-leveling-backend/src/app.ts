@@ -3,23 +3,20 @@ import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
 import dotenv from 'dotenv';
+import { startQuestScheduler } from './schedulers/questScheduler';
 dotenv.config();
+
+const { PrismaClient } = require('@prisma/client');
+const { performanceMonitor, logSystemError } = require('./middleware/adminLogger');
+const app: Application = express();
+const PORT = process.env.PORT || 5000;
+const prisma = new PrismaClient();
 
 // Import after app is created
 import { testConnection } from './config/database';
 import routes from './routes';
 import { errorHandler } from './middleware/errorHandler';
 import { startAllSchedulers } from './schedulers/questScheduler';
-
-// CORRECT: Import admin settings with ES6 import (not require)
-import adminSettingsRoutes from './routes/admin/settings';
-
-const { PrismaClient } = require('@prisma/client');
-const { performanceMonitor, logSystemError } = require('./middleware/adminLogger');
-
-const app: Application = express();
-const PORT = process.env.PORT || 5000;
-const prisma = new PrismaClient();
 
 // Middleware
 app.use(helmet({
@@ -55,93 +52,92 @@ app.use('/uploads', (req, res, next) => {
 app.use(
   "/uploads",
   express.static(path.join(__dirname, "../uploads"), {
-    setHeaders: (res) => {
-      res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+    setHeaders: (res, filePath) => {
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
     }
   })
 );
 
+console.log("Serving uploads from:", path.join(__dirname, "../uploads"));
+
 // Performance monitoring middleware
-if (performanceMonitor) {
-  app.use(performanceMonitor);
-}
-
-// Mount main API routes
-app.use('/api', routes);
-
-// Mount admin settings routes separately (if needed for specific admin settings)
-// This line might be redundant if settings are already handled in adminRoutes
-// app.use('/api/admin/settings', adminSettingsRoutes);
-
-// Global error handler
-app.use(errorHandler);
-
-// Root endpoint
-app.get('/', (req, res) => {
-  res.json({
-    message: 'Solo Leveling System API',
-    version: '1.0.0',
-    status: 'Running',
-    timestamp: new Date().toISOString()
-  });
+app.use(async (req, res, next) => {
+  try {
+    const performanceEnabled = await prisma.system_settings.findUnique({
+      where: { setting_key: 'performance_monitoring_enabled' }
+    });
+    
+    if (performanceEnabled && performanceEnabled.setting_value === 'true') {
+      return performanceMonitor(req, res, next);
+    }
+    
+    next();
+  } catch (error) {
+    // If we can't check the setting, just continue without monitoring
+    next();
+  }
 });
 
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({
-    error: 'Route not found',
-    path: req.originalUrl,
-    method: req.method
+// Routes - Register ALL routes through the main router
+app.use('/api', routes);
+
+// Global error handler with system error logging
+app.use(async (err: any, req: any, res: any, next: any) => {
+  console.error('Global error handler:', err);
+
+  // Log system error
+  try {
+    await logSystemError(err, req, req.user?.user_id);
+  } catch (logError) {
+    console.error('Failed to log system error:', logError);
+  }
+
+  // Determine error response based on environment
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  
+  res.status(err.status || 500).json({
+    success: false,
+    error: isDevelopment ? err.message : 'Internal server error',
+    ...(isDevelopment && { stack: err.stack })
   });
 });
 
 // Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received. Shutting down gracefully...');
-  await prisma.$disconnect();
-  process.exit(0);
-});
-
 process.on('SIGINT', async () => {
-  console.log('SIGINT received. Shutting down gracefully...');
+  console.log('Shutting down gracefully...');
   await prisma.$disconnect();
   process.exit(0);
 });
 
+// Error handler
+app.use(errorHandler);
+
+// Start server
 const startServer = async () => {
   try {
-    // Test database connection
-    console.log('🔍 Testing database connection...');
-    await testConnection();
-    console.log('✅ Database connected successfully');
-
-    // Start schedulers
-    console.log('⚡ Starting quest schedulers...');
-    await startAllSchedulers();
-    console.log('✅ Quest schedulers started');
-
-    // Start server
-    app.listen(PORT, () => {
-      console.log(`
-🚀 Solo Leveling System API Server Started!
-📡 Port: ${PORT}
-🌍 Environment: ${process.env.NODE_ENV || 'development'}
-🔗 Health Check: http://localhost:${PORT}/api/health
-📚 API Docs: http://localhost:${PORT}/api
-⏰ Server Time: ${new Date().toISOString()}
-      `);
-    });
-
-  } catch (error) {
-    console.error('❌ Failed to start server:', error);
+    const dbConnected = await testConnection();
     
-    if (logSystemError) {
-      await logSystemError(error, null, null, 'server_startup');
+    if (!dbConnected) {
+      console.log('⚠️ Starting server without database connection');
+      console.log('🔧 Check your .env file and MySQL server');
+    } else {
+      console.log('✅ Database connected successfully');
+      
+      // 🎯 START AUTOMATIC QUEST GENERATION SYSTEM
+      startAllSchedulers();
     }
     
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
+      console.log('🎮 Solo Leveling Life System - Quest Generation Active!');
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
     process.exit(1);
   }
 };
 
-// Start the server
 startServer();
+
+export default app;
